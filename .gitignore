@@ -1,0 +1,99 @@
+# ── Python / Django ───────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+wheels/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+.env.bak
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+static_root/
+
+# Migrations (keep these — comment out if you want to exclude)
+# */migrations/
+
+# ── Environment / Secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+
+# ── Node / React / Vite ──────────────────────────────────────────────────────
+canadamedical-frontend/node_modules/
+canadamedical-frontend/dist/
+canadamedical-frontend/.env
+canadamedical-frontend/.env.*
+!canadamedical-frontend/.env.example
+canadamedical-frontend/coverage/
+canadamedical-frontend/.cache/
+
+# Bun
+canadamedical-frontend/.bun/
+
+# TypeScript
+*.tsbuildinfo
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ── IDE / Editors ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ── Testing / Coverage ───────────────────────────────────────────────────────
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+schema.yaml
+*.bak
+*.tmp
+*.orig
