@@ -21,10 +21,21 @@ class NotificationListView(APIView):
 
     def get(self, request):
         if request.user.is_staff:
-            qs = _admin_qs()[:50]
+            qs = _admin_qs()
         else:
-            qs = _user_qs(request.user)[:50]
-        serializer = NotificationSerializer(qs, many=True)
+            qs = _user_qs(request.user)
+
+        since = request.query_params.get('since')
+        if since:
+            try:
+                from django.utils.dateparse import parse_datetime
+                since_dt = parse_datetime(since)
+                if since_dt:
+                    qs = qs.filter(created_at__gt=since_dt)
+            except (ValueError, TypeError):
+                pass
+
+        serializer = NotificationSerializer(qs[:50], many=True)
         return success_response(data=serializer.data)
 
 

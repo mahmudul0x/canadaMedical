@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/useDebounce";
-import { SPECIALTIES as SPECIALTY_OPTIONS, PROVINCES, JOB_TYPES } from "@/data/jobs";
+import { SPECIALTIES as FALLBACK_SPECIALTIES, PROVINCES as FALLBACK_PROVINCES, JOB_TYPES } from "@/data/jobs";
 
 export const Route = createFileRoute("/jobs/")({
   head: () => ({
@@ -234,6 +234,29 @@ function JobsPage() {
     },
     staleTime: 60 * 60 * 1000,
   });
+
+  const { data: apiSpecialties } = useQuery<{ value: string; label: string }[]>({
+    queryKey: ["job-specialties"],
+    queryFn: async () => {
+      const r = await api.get("/api/jobs/specialties/");
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: apiProvinces } = useQuery<{ value: string; label: string }[]>({
+    queryKey: ["job-provinces"],
+    queryFn: async () => {
+      const r = await api.get("/api/jobs/provinces/");
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const SPECIALTY_OPTIONS = (apiSpecialties && apiSpecialties.length > 0) ? apiSpecialties : FALLBACK_SPECIALTIES;
+  const PROVINCES = (apiProvinces && apiProvinces.length > 0) ? apiProvinces : FALLBACK_PROVINCES;
 
   const { data, isLoading } = useQuery({
     queryKey: ["jobs", debouncedQ, specialty, province, jobType, practiceSetting, debouncedSalaryMin, debouncedSalaryMax],

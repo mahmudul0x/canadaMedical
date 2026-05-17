@@ -1,4 +1,9 @@
+import logging
+import smtplib
+
 from django.contrib.auth import get_user_model
+
+logger = logging.getLogger(__name__)
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
@@ -128,18 +133,17 @@ class CustomLoginView(TokenObtainPairView):
     ),
 )
 class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def post(self, request):
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return success_response(message='Logged out successfully.')
         try:
-            refresh_token = request.data.get('refresh')
-            if not refresh_token:
-                return success_response(message='Logged out successfully.')
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-            return success_response(message='Logged out successfully.')
+            RefreshToken(refresh_token).blacklist()
         except TokenError:
-            return success_response(message='Logged out successfully.')
+            pass  # already expired or blacklisted — treat as a clean logout
+        return success_response(message='Logged out successfully.')
 
 
 @extend_schema_view(
@@ -206,7 +210,7 @@ class PhysicianProfileView(APIView):
         try:
             profile = request.user.physician_profile
         except PhysicianProfile.DoesNotExist:
-            return success_response(data={}, message='Profile not found.')
+            return success_response(message='Profile not found.', status_code=status.HTTP_404_NOT_FOUND)
         serializer = PhysicianProfileSerializer(profile)
         return success_response(data=serializer.data)
 
@@ -248,7 +252,8 @@ class PhysicianResumeUploadView(APIView):
         if updated.resume:
             try:
                 resume_url = request.build_absolute_uri(updated.resume.url)
-            except Exception:
+            except (ValueError, AttributeError) as exc:
+                logger.warning('Could not build absolute URI for resume (user=%s): %s', request.user.pk, exc)
                 resume_url = updated.resume.name
         return success_response(
             data={'resume': resume_url},
@@ -278,7 +283,7 @@ class EmployerProfileView(APIView):
         try:
             profile = request.user.employer_profile
         except EmployerProfile.DoesNotExist:
-            return success_response(data={}, message='Profile not found.')
+            return success_response(message='Profile not found.', status_code=status.HTTP_404_NOT_FOUND)
         serializer = EmployerProfileSerializer(profile)
         return success_response(data=serializer.data)
 
@@ -321,17 +326,20 @@ class PasswordResetRequestView(APIView):
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
         reset_url = f"{settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}"
-        send_mail(
-            subject='Password Reset Request',
-            message=(
-                f'Click the link below to reset your password:\n\n'
-                f'{reset_url}\n\n'
-                f'This link expires in 24 hours.'
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
-            fail_silently=True,
-        )
+        try:
+            send_mail(
+                subject='Password Reset Request',
+                message=(
+                    f'Click the link below to reset your password:\n\n'
+                    f'{reset_url}\n\n'
+                    f'This link expires in 24 hours.'
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[email],
+                fail_silently=False,
+            )
+        except (smtplib.SMTPException, ConnectionError, TimeoutError, OSError) as exc:
+            logger.error('Failed to send password reset email to %s: %s', email, exc)
         return success_response(message=generic_msg)
 
 

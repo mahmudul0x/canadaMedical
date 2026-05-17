@@ -233,7 +233,7 @@ function AdminLayout() {
   const [enterprisePendingCount, setEnterprisePendingCount] = useState(0);
 
   useEffect(() => {
-    api.get("/api/subscriptions/enterprise/admin/requests/", { params: { status: "pending", page_size: 1 } })
+    api.get("/api/subscriptions/admin/enterprise/requests/", { params: { status: "pending", page_size: 1 } })
       .then((r) => {
         const d = r.data?.data ?? r.data;
         setEnterprisePendingCount(d?.count ?? (Array.isArray(d) ? d.length : 0));

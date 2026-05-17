@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.db.models import Count, F, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -19,9 +20,11 @@ from io import BytesIO
 import datetime as dt
 
 from accounts.models import EmployerProfile
+from core.constants import SPECIALTY_CHOICES, SUB_SPECIALTY_CHOICES, PROVINCE_CHOICES, PRACTICE_SETTING_CHOICES
 from core.exceptions import success_response
 from core.permissions import IsPhysician, IsEmployer
-from .models import Job, JobApplication, SavedJob, SPECIALTY_CHOICES, SUB_SPECIALTY_CHOICES, PROVINCE_CHOICES, PRACTICE_SETTING_CHOICES
+from services.subscription_service import check_job_posting_limit
+from .models import Job, JobApplication, SavedJob
 from .serializers import (
     JobListSerializer,
     JobDetailSerializer,
@@ -31,49 +34,6 @@ from .serializers import (
     SavedJobSerializer,
 )
 from .filters import JobFilter
-
-def check_job_posting_limit(user, employer):
-    """
-    Returns (allowed: bool, error_message: str | None).
-    First checks CustomSubscriptionPlan (if active and not expired),
-    then falls back to UserSubscription.
-    """
-    import datetime as _dt
-    from subscriptions.models import UserSubscription, CustomSubscriptionPlan
-
-    today = _dt.date.today()
-
-    # Check for an active custom plan first
-    try:
-        custom_plan = user.custom_plan
-        if custom_plan.is_active and (custom_plan.valid_until is None or custom_plan.valid_until >= today):
-            if custom_plan.job_post_limit is not None:
-                active_jobs = Job.objects.filter(employer=employer, is_active=True).count()
-                if active_jobs >= custom_plan.job_post_limit:
-                    return False, (
-                        f'Job posting limit reached ({custom_plan.job_post_limit} active jobs). '
-                        'Please contact your account manager to adjust your enterprise plan.'
-                    )
-            return True, None
-    except CustomSubscriptionPlan.DoesNotExist:
-        pass
-
-    # Fall back to standard UserSubscription
-    try:
-        sub = UserSubscription.objects.select_related('plan').get(user=user)
-        if sub.status != 'active':
-            return False, 'Your subscription is not active. Please subscribe to post jobs.'
-        if sub.plan.job_post_limit is not None:
-            active_jobs = Job.objects.filter(employer=employer, is_active=True).count()
-            if active_jobs >= sub.plan.job_post_limit:
-                return False, (
-                    f'Job posting limit reached ({sub.plan.job_post_limit} active jobs). '
-                    'Please upgrade your plan to post more.'
-                )
-        return True, None
-    except UserSubscription.DoesNotExist:
-        return False, 'No active subscription found. Please select a plan to post jobs.'
-
 
 _JOB_FILTER_PARAMS = [
     OpenApiParameter('specialty', OpenApiTypes.STR, description='Filter by specialty slug'),
@@ -104,9 +64,12 @@ class JobListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
+        qs = Job.objects.select_related('employer').annotate(
+            applications_count=Count('applications', distinct=True)
+        )
         if user.is_authenticated and user.is_staff:
-            return Job.objects.select_related('employer').all()
-        return Job.objects.select_related('employer').filter(is_active=True, is_approved=True)
+            return qs
+        return qs.filter(is_active=True, is_approved=True)
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -128,18 +91,17 @@ class JobListCreateView(generics.ListCreateAPIView):
         return success_response(data=serializer.data)
 
     def create(self, request, *args, **kwargs):
-        # Enforce subscription job posting limits (custom plan takes priority)
         employer = request.user.employer_profile
-        allowed, error_message = check_job_posting_limit(request.user, employer)
-        if not allowed:
-            return success_response(
-                message=error_message,
-                status_code=status.HTTP_403_FORBIDDEN,
-            )
-
-        serializer = self.get_serializer(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        job = serializer.save()
+        with transaction.atomic():
+            allowed, error_message = check_job_posting_limit(request.user, employer)
+            if not allowed:
+                return success_response(
+                    message=error_message,
+                    status_code=status.HTTP_403_FORBIDDEN,
+                )
+            serializer = self.get_serializer(data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            job = serializer.save()
         return success_response(
             data=JobDetailSerializer(job).data,
             message='Job posting created. It will be visible after admin approval.',
@@ -161,11 +123,9 @@ class JobDetailView(APIView):
         return [AllowAny()]
 
     def get(self, request, pk):
-        user = request.user
-        if user.is_authenticated and user.is_staff:
-            job = get_object_or_404(Job, pk=pk)
-        else:
-            job = get_object_or_404(Job, pk=pk)
+        qs = Job.objects.annotate(applications_count=Count('applications', distinct=True))
+        job = get_object_or_404(qs, pk=pk)
+        if not (request.user.is_authenticated and request.user.is_staff):
             if not job.is_approved or not job.is_active:
                 return success_response(message='This job is no longer available.', status_code=status.HTTP_404_NOT_FOUND)
         Job.objects.filter(pk=pk).update(views_count=F('views_count') + 1)
@@ -173,7 +133,7 @@ class JobDetailView(APIView):
         return success_response(data=JobDetailSerializer(job).data)
 
     def put(self, request, pk):
-        job = get_object_or_404(Job, pk=pk)
+        job = get_object_or_404(Job.objects.select_related('employer__user'), pk=pk)
         if not request.user.is_staff and job.employer.user != request.user:
             return success_response(message='Permission denied.', status_code=status.HTTP_403_FORBIDDEN)
         serializer = JobCreateUpdateSerializer(job, data=request.data, partial=True, context={'request': request})
@@ -182,7 +142,7 @@ class JobDetailView(APIView):
         return success_response(data=JobDetailSerializer(updated).data, message='Job updated.')
 
     def delete(self, request, pk):
-        job = get_object_or_404(Job, pk=pk)
+        job = get_object_or_404(Job.objects.select_related('employer__user'), pk=pk)
         if not request.user.is_staff and job.employer.user != request.user:
             return success_response(message='Permission denied.', status_code=status.HTTP_403_FORBIDDEN)
         job.delete()
@@ -214,19 +174,42 @@ class JobDuplicateView(APIView):
 
     def post(self, request, pk):
         employer = request.user.employer_profile
-        allowed, error_message = check_job_posting_limit(request.user, employer)
-        if not allowed:
-            return success_response(message=error_message, status_code=status.HTTP_403_FORBIDDEN)
-
-        job = get_object_or_404(Job, pk=pk, employer=employer)
-        job.pk = None
-        job.title = f'{job.title} (Copy)'
-        job.is_approved = False
-        job.is_active = True
-        job.views_count = 0
-        job.save()
+        with transaction.atomic():
+            allowed, error_message = check_job_posting_limit(request.user, employer)
+            if not allowed:
+                return success_response(message=error_message, status_code=status.HTTP_403_FORBIDDEN)
+            source = get_object_or_404(Job, pk=pk, employer=employer)
+            copy = Job.objects.create(
+                employer=employer,
+                title=f'{source.title} (Copy)',
+                specialty=source.specialty,
+                sub_specialty=source.sub_specialty,
+                province=source.province,
+                city=source.city,
+                description=source.description,
+                qualifications=source.qualifications,
+                requirements=source.requirements,
+                responsibilities=source.responsibilities,
+                compensation=source.compensation,
+                benefits=source.benefits,
+                application_deadline=source.application_deadline,
+                contact_person=source.contact_person,
+                contact_email=source.contact_email,
+                job_type=source.job_type,
+                practice_setting=source.practice_setting,
+                required_experience=source.required_experience,
+                salary_min=source.salary_min,
+                salary_max=source.salary_max,
+                salary_display=source.salary_display,
+                compensation_model=source.compensation_model,
+                remote_option=source.remote_option,
+                relocation_assistance=source.relocation_assistance,
+                is_active=True,
+                is_approved=False,
+                views_count=0,
+            )
         return success_response(
-            data=JobListSerializer(job).data,
+            data=JobListSerializer(copy).data,
             message='Job duplicated. It will be visible after admin approval.',
             status_code=status.HTTP_201_CREATED,
         )
@@ -252,7 +235,9 @@ class EmployerMyJobsView(generics.ListAPIView):
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return Job.objects.none()
-        qs = Job.objects.select_related('employer').filter(
+        qs = Job.objects.select_related('employer').annotate(
+            applications_count=Count('applications', distinct=True)
+        ).filter(
             employer=self.request.user.employer_profile
         ).order_by('-created_at')
 
@@ -324,9 +309,12 @@ class EmployerAllApplicationsView(generics.ListAPIView):
         status_filter = p.get('status', '').strip()
         if status_filter:
             qs = qs.filter(status=status_filter)
-        job_id = p.get('job_id', '').strip()
-        if job_id:
-            qs = qs.filter(job_id=job_id)
+        job_id_raw = p.get('job_id', '').strip()
+        if job_id_raw:
+            try:
+                qs = qs.filter(job_id=int(job_id_raw))
+            except (ValueError, TypeError):
+                pass  # ignore non-integer job_id param
         specialty = p.get('specialty', '').strip()
         if specialty:
             qs = qs.filter(physician__specialty__iexact=specialty)
@@ -528,6 +516,7 @@ class JobApplicationsForEmployerView(generics.ListAPIView):
 class UpdateApplicationStatusView(APIView):
     permission_classes = [IsEmployer]
     VALID_STATUSES = [choice[0] for choice in JobApplication.STATUS_CHOICES if choice[0] != 'withdrawn']
+    MAX_NOTES_LENGTH = 5_000
 
     def patch(self, request, pk):
         application = get_object_or_404(
@@ -549,6 +538,11 @@ class UpdateApplicationStatusView(APIView):
 
         employer_notes = request.data.get('employer_notes')
         if employer_notes is not None:
+            if len(str(employer_notes)) > self.MAX_NOTES_LENGTH:
+                return success_response(
+                    message=f'Employer notes must not exceed {self.MAX_NOTES_LENGTH} characters.',
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
             application.employer_notes = employer_notes
             update_fields.append('employer_notes')
 

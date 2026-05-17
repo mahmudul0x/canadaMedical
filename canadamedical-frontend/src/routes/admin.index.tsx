@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { api, apiError } from "@/lib/api";
+import toast from "react-hot-toast";
 import {
   AreaChart,
   Area,
@@ -170,6 +171,12 @@ function AdminDashboard() {
     staleTime: 30_000,
   });
 
+  const recalculate = useMutation({
+    mutationFn: () => api.post("/api/admin/stats/recalculate/"),
+    onSuccess: () => { toast.success("Stats recalculated successfully."); refetch(); },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
   const s = data?.stats;
   const totalUsers = (s?.total_physicians ?? 0) + (s?.total_employers ?? 0);
 
@@ -230,6 +237,15 @@ function AdminDashboard() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => recalculate.mutate()}
+              disabled={recalculate.isPending || isFetching}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold text-white/80 backdrop-blur-sm transition hover:bg-white/20 disabled:opacity-50"
+              title="Recalculate all platform statistics"
+            >
+              <Activity className={`h-3.5 w-3.5 ${recalculate.isPending ? "animate-pulse" : ""}`} />
+              Recalculate
+            </button>
             <button
               onClick={() => refetch()}
               disabled={isFetching}

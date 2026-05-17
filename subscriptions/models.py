@@ -58,6 +58,7 @@ class EnterpriseRequest(models.Model):
         ('reviewing', 'Reviewing'),
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
+        ('revoked', 'Revoked'),
     ]
     VOLUME_CHOICES = [
         ('1_5', '1-5 physicians/month'),
@@ -81,6 +82,8 @@ class EnterpriseRequest(models.Model):
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_enterprise_requests')
     approved_at = models.DateTimeField(null=True, blank=True)
     rejected_reason = models.TextField(blank=True)
+    revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='revoked_enterprise_requests')
+    revoked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -96,6 +99,7 @@ class CustomSubscriptionPlan(models.Model):
         ('pending_payment', 'Pending Payment'),
         ('paid',            'Paid'),
         ('free',            'Free (No Charge)'),
+        ('revoked',         'Revoked'),
     ]
 
     enterprise_request = models.OneToOneField(EnterpriseRequest, on_delete=models.CASCADE, related_name='custom_plan')

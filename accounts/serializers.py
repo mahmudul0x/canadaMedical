@@ -38,7 +38,7 @@ def validate_phone(phone):
         raise serializers.ValidationError('Enter a valid phone number.')
     if phone and not (7 <= len(cleaned) <= 15):
         raise serializers.ValidationError('Phone number must be between 7 and 15 digits.')
-    return phone
+    return cleaned  # store normalised digits; empty string passes through unchanged
 
 
 RESUME_MAGIC_BYTES = {
@@ -398,12 +398,20 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         return data
 
     def save(self):
+        from django.db import DatabaseError
         user = self.validated_data['user']
         user.set_password(self.validated_data['new_password'])
         user.save()
         try:
             from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
-            for token in OutstandingToken.objects.filter(user=user):
-                BlacklistedToken.objects.get_or_create(token=token)
-        except Exception:
-            logger.exception('Failed to blacklist tokens after password reset for user %s', user.pk)
+            tokens = OutstandingToken.objects.filter(user=user)
+            BlacklistedToken.objects.bulk_create(
+                [BlacklistedToken(token=t) for t in tokens],
+                ignore_conflicts=True,
+            )
+        except DatabaseError as exc:
+            logger.error(
+                'Failed to blacklist tokens after password reset for user %s — '
+                'existing sessions may remain active: %s',
+                user.pk, exc,
+            )

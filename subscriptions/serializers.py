@@ -84,17 +84,35 @@ class EnterpriseRequestAdminSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
     company_name = serializers.CharField(source='employer_profile.company_name', read_only=True)
     approved_by_email = serializers.EmailField(source='approved_by.email', read_only=True, allow_null=True)
+    revoked_by_email = serializers.EmailField(source='revoked_by.email', read_only=True, allow_null=True)
+    monthly_hiring_volume_display = serializers.CharField(source='get_monthly_hiring_volume_display', read_only=True)
+    custom_payment_status = serializers.SerializerMethodField()
+    custom_payment_link = serializers.SerializerMethodField()
 
     class Meta:
         model = EnterpriseRequest
         fields = [
             'id', 'user_email', 'company_name',
             'organization_name', 'contact_name', 'contact_email', 'contact_phone',
-            'monthly_hiring_volume', 'message', 'status',
+            'monthly_hiring_volume', 'monthly_hiring_volume_display', 'message', 'status',
             'custom_job_limit', 'custom_price_monthly', 'custom_features',
             'admin_notes', 'approved_by_email', 'approved_at', 'rejected_reason',
+            'revoked_by_email', 'revoked_at',
+            'custom_payment_status', 'custom_payment_link',
             'created_at', 'updated_at',
         ]
+
+    def get_custom_payment_status(self, obj):
+        try:
+            return obj.custom_plan.payment_status
+        except Exception:
+            return None
+
+    def get_custom_payment_link(self, obj):
+        try:
+            return obj.custom_plan.stripe_payment_link_url or None
+        except Exception:
+            return None
 
 
 class CustomSubscriptionPlanSerializer(serializers.ModelSerializer):

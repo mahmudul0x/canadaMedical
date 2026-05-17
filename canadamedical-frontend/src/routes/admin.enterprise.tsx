@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 import {
   Building2, Check, X, Eye, Clock, Search,
   CheckCircle2, XCircle, Loader2, ChevronDown, ChevronUp,
-  DollarSign, Users, Calendar, Pencil,
+  DollarSign, Users, Calendar, Pencil, RotateCcw, AlertTriangle,
 } from "lucide-react";
 import { api, apiError } from "@/lib/api";
 
@@ -14,7 +14,7 @@ export const Route = createFileRoute("/admin/enterprise")({
   component: AdminEnterprisePage,
 });
 
-type RequestStatus = "pending" | "reviewing" | "approved" | "rejected";
+type RequestStatus = "pending" | "reviewing" | "approved" | "rejected" | "revoked";
 
 interface EnterpriseRequest {
   id: number;
@@ -33,6 +33,10 @@ interface EnterpriseRequest {
   approved_by_email?: string;
   approved_at?: string;
   rejected_reason?: string;
+  revoked_by_email?: string;
+  revoked_at?: string;
+  custom_payment_status?: "pending_payment" | "paid" | "free" | "revoked" | null;
+  custom_payment_link?: string | null;
   created_at: string;
 }
 
@@ -54,6 +58,7 @@ const STATUS_TABS: { value: string; label: string }[] = [
   { value: "reviewing", label: "Reviewing" },
   { value: "approved", label: "Approved" },
   { value: "rejected", label: "Rejected" },
+  { value: "revoked", label: "Revoked" },
 ];
 
 const STATUS_META: Record<RequestStatus, { bg: string; color: string; label: string; icon: React.ComponentType<{ className?: string }> }> = {
@@ -61,6 +66,7 @@ const STATUS_META: Record<RequestStatus, { bg: string; color: string; label: str
   reviewing: { bg: "bg-blue-100",    color: "text-blue-800",    label: "Reviewing", icon: Search },
   approved:  { bg: "bg-emerald-100", color: "text-emerald-800", label: "Approved",  icon: CheckCircle2 },
   rejected:  { bg: "bg-rose-100",    color: "text-rose-800",    label: "Rejected",  icon: XCircle },
+  revoked:   { bg: "bg-slate-100",   color: "text-slate-700",   label: "Revoked",   icon: RotateCcw },
 };
 
 function StatusPill({ status }: { status: RequestStatus }) {
@@ -124,6 +130,24 @@ function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest
     try {
       await api.patch(`/api/subscriptions/admin/enterprise/requests/${request.id}/review/`);
       toast.success("Marked as reviewing.");
+      onDone();
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRevoke() {
+    const alreadyPaid = request.custom_payment_status === "paid";
+    const confirmMsg = alreadyPaid
+      ? "⚠️ This customer has ALREADY PAID. Revoking will issue a full Stripe refund and downgrade them to the free plan.\n\nAre you sure?"
+      : "Revoke this approval? The payment link will be deactivated and the customer cannot pay.\n\nAre you sure?";
+    if (!window.confirm(confirmMsg)) return;
+    setLoading(true);
+    try {
+      await api.patch(`/api/subscriptions/admin/enterprise/requests/${request.id}/revoke/`);
+      toast.success(alreadyPaid ? "Approval revoked and refund issued." : "Approval revoked. Payment link deactivated.");
       onDone();
     } catch (err) {
       toast.error(apiError(err));
@@ -200,17 +224,68 @@ function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest
             </div>
           </div>
 
-          <div className="flex gap-2 border-t border-border pt-4">
-            <button onClick={handleReject} disabled={loading} className="rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition disabled:opacity-60">
-              Reject
-            </button>
-            <button onClick={handleMarkReviewing} disabled={loading} className="rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-semibold text-blue-600 hover:bg-blue-50 transition disabled:opacity-60">
-              Mark Reviewing
-            </button>
-            <button onClick={handleApprove} disabled={loading} className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 transition disabled:opacity-60">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              Approve Plan
-            </button>
+          <div className="flex flex-wrap gap-2 border-t border-border pt-4">
+            {/* ── Revoked state ── */}
+            {request.status === "revoked" && (
+              <span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-600">
+                <RotateCcw className="h-4 w-4" /> Approval Revoked
+                {request.revoked_by_email && (
+                  <span className="text-xs font-normal text-slate-400">by {request.revoked_by_email}</span>
+                )}
+              </span>
+            )}
+
+            {/* ── Approved state ── */}
+            {request.status === "approved" && (
+              <>
+                <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-sm font-semibold text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" />
+                  {request.custom_payment_status === "paid" ? "Paid & Active" : "Approved — Awaiting Payment"}
+                </span>
+                {/* Revoke button — not paid yet */}
+                {request.custom_payment_status === "pending_payment" && (
+                  <button
+                    onClick={handleRevoke}
+                    disabled={loading}
+                    className="ml-auto inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100 transition disabled:opacity-60"
+                  >
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                    Revoke Approval
+                  </button>
+                )}
+                {/* Revoke + Refund button — already paid */}
+                {request.custom_payment_status === "paid" && (
+                  <button
+                    onClick={handleRevoke}
+                    disabled={loading}
+                    className="ml-auto inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 transition disabled:opacity-60"
+                  >
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                    Revoke &amp; Refund
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* ── Pending / Reviewing / Rejected states ── */}
+            {request.status !== "approved" && request.status !== "revoked" && (
+              <>
+                {request.status !== "rejected" && (
+                  <button onClick={handleReject} disabled={loading} className="rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition disabled:opacity-60">
+                    Reject
+                  </button>
+                )}
+                {request.status !== "reviewing" && request.status !== "rejected" && (
+                  <button onClick={handleMarkReviewing} disabled={loading} className="rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-semibold text-blue-600 hover:bg-blue-50 transition disabled:opacity-60">
+                    Mark Reviewing
+                  </button>
+                )}
+                <button onClick={handleApprove} disabled={loading} className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 transition disabled:opacity-60">
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  Approve Plan
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

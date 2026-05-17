@@ -325,7 +325,7 @@ r6, ok6 = req("POST", "/api/jobs/",
         "is_active": True,
     },
     token=EMP_TOKEN, label="POST /api/jobs/ - create job 2 (locum)")
-JOB_ID2 = r6.get("data", {}).get("id", 2)
+JOB_ID2 = ((r6 or {}).get("data") or {}).get("id", 2)
 
 req("GET", "/api/jobs/my-jobs/",
     token=EMP_TOKEN, label="GET /api/jobs/my-jobs/ - employer own listings")

@@ -46,6 +46,7 @@ interface UserSubscription {
   jobs_posted: number;
   jobs_remaining: number | null;
   cancel_at_period_end: boolean;
+  has_stripe_subscription?: boolean;
   custom_features?: string[];
   custom_valid_until?: string | null;
   custom_payment_status?: "pending_payment" | "paid" | "free" | null;
@@ -241,7 +242,8 @@ function EmployerDashboard() {
       return d as UserSubscription;
     },
     enabled: isAuthenticated,
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   // Fetch enterprise request status
@@ -352,7 +354,7 @@ function EmployerDashboard() {
         <main className="flex-1 overflow-y-auto p-5 lg:p-7">
           {tab === "overview" && <Overview onNavigate={setTab} subscription={subscription ?? null} enterpriseRequest={enterpriseRequest ?? null} />}
           {tab === "jobs" && <MyJobs onNavigate={setTab} />}
-          {tab === "post" && <PostJob onPosted={() => setTab("jobs")} subscription={subscription ?? null} />}
+          {tab === "post" && <PostJob onPosted={() => setTab("jobs")} subscription={subscription ?? null} onNavigate={setTab} />}
           {tab === "applications" && <Applications />}
           {tab === "profile" && <CompanyProfile />}
           {tab === "billing" && <BillingHistory subscription={subscription ?? null} />}
@@ -371,11 +373,13 @@ function Overview({ onNavigate, subscription, enterpriseRequest }: { onNavigate:
     queryKey: ["my-jobs"],
     queryFn: async () => { const r = await api.get("/api/jobs/my-jobs/"); const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.results ?? []); },
     retry: 1,
+    refetchOnWindowFocus: true,
   });
   const { data: allApps, isLoading: appsLoading } = useQuery<ReceivedApp[]>({
     queryKey: ["employer-all-applications"],
     queryFn: async () => { const r = await api.get("/api/jobs/employer-applications/"); const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.results ?? []); },
     retry: 1,
+    refetchOnWindowFocus: true,
   });
 
   const list = jobs ?? [];
@@ -513,10 +517,69 @@ function Overview({ onNavigate, subscription, enterpriseRequest }: { onNavigate:
                   </button>
                 </>
               )}
+
+              {/* Cancellation notice for paid plans */}
+              {price > 0 && subscription.cancel_at_period_end && (
+                <>
+                  <div className="hidden sm:block w-px h-6 shrink-0" style={{ background: "oklch(1 0 0 / 0.12)" }} />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[11px] font-semibold" style={{ color: "oklch(0.85 0.16 75)" }}>
+                      Cancels {subscription.current_period_end
+                        ? new Date(subscription.current_period_end).toLocaleDateString("en-CA")
+                        : "soon"}
+                    </span>
+                    <button
+                      onClick={() => onNavigate("billing")}
+                      className="rounded-lg px-2.5 py-1 text-[10px] font-bold transition-all hover:scale-[1.03]"
+                      style={{ background: "oklch(0.78 0.13 175 / 0.20)", color: "oklch(0.78 0.13 175)", border: "1px solid oklch(0.78 0.13 175 / 0.30)" }}
+                    >
+                      Reactivate
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Manage plan link for active paid plans */}
+              {price > 0 && !subscription.cancel_at_period_end && subscription.has_stripe_subscription && (
+                <>
+                  <div className="hidden sm:block w-px h-6 shrink-0" style={{ background: "oklch(1 0 0 / 0.12)" }} />
+                  <button
+                    onClick={() => onNavigate("billing")}
+                    className="shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all hover:scale-[1.03]"
+                    style={{ background: "oklch(1 0 0 / 0.08)", color: "oklch(0.985 0.004 250 / 0.70)", border: "1px solid oklch(1 0 0 / 0.15)" }}
+                  >
+                    Manage Plan
+                  </button>
+                </>
+              )}
             </div>
           );
         })()}
       </div>
+
+      {/* ── Cancellation warning banner ─────────────────────────────────── */}
+      {subscription?.cancel_at_period_end && subscription.current_period_end && (
+        <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 shadow-sm">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100">
+            <AlertTriangle className="h-5 w-5 text-amber-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-amber-900">Your subscription is scheduled to cancel</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              You'll keep full access until{" "}
+              <span className="font-semibold">{format(new Date(subscription.current_period_end), "MMMM d, yyyy")}</span>.
+              After that, your account will revert to the free plan.
+            </p>
+          </div>
+          <button
+            onClick={() => onNavigate("billing")}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 transition"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Reactivate Plan
+          </button>
+        </div>
+      )}
 
       {/* ── Stats row ───────────────────────────────────────────────────── */}
       {isLoading ? (
@@ -791,6 +854,112 @@ function Overview({ onNavigate, subscription, enterpriseRequest }: { onNavigate:
   );
 }
 
+// ─── Job Expanded Detail (uses /api/jobs/<pk>/applications/) ──────────────────
+
+interface JobApplicant {
+  id: number;
+  physician_name: string;
+  physician_email?: string;
+  status: string;
+  applied_at: string;
+}
+
+function JobExpandedDetail({ job, convRate, onNavigate }: {
+  job: EmpJob;
+  convRate: string;
+  onNavigate: (tab: Tab) => void;
+}) {
+  const { data: applicants, isLoading } = useQuery<JobApplicant[]>({
+    queryKey: ["job-applications", job.id],
+    queryFn: async () => {
+      const r = await api.get(`/api/jobs/${job.id}/applications/`);
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : (d?.results ?? []);
+    },
+    enabled: true,
+  });
+
+  const STATUS_COLOR: Record<string, string> = {
+    pending: "bg-amber-100 text-amber-700",
+    reviewed: "bg-blue-100 text-blue-700",
+    shortlisted: "bg-violet-100 text-violet-700",
+    interview: "bg-indigo-100 text-indigo-700",
+    offered: "bg-emerald-100 text-emerald-700",
+    rejected: "bg-rose-100 text-rose-700",
+  };
+
+  return (
+    <div className="border-t border-border bg-secondary/30 px-4 py-3 space-y-3">
+      {/* Stats row */}
+      <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-4">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Applications</p>
+          <p className="font-bold text-foreground">{job.applications_count ?? 0}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Views</p>
+          <p className="font-bold text-foreground">{job.views_count ?? 0}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Conv. Rate</p>
+          <p className="font-bold text-foreground">{convRate}%</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Deadline</p>
+          <p className="font-bold text-foreground">
+            {job.application_deadline ? format(new Date(job.application_deadline), "MMM d, yyyy") : "—"}
+          </p>
+        </div>
+      </div>
+
+      {/* Recent applicants preview */}
+      {(job.applications_count ?? 0) > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Recent Applicants</p>
+          {isLoading ? (
+            <div className="flex gap-2">
+              {[1,2,3].map(i => <div key={i} className="h-7 w-32 animate-pulse rounded-lg bg-secondary" />)}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {(applicants ?? []).slice(0, 5).map(a => (
+                <span key={a.id} className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold ${STATUS_COLOR[a.status] ?? "bg-secondary text-foreground"}`}>
+                  {a.physician_name}
+                  <span className="opacity-60">· {a.status}</span>
+                </span>
+              ))}
+              {(applicants?.length ?? 0) > 5 && (
+                <span className="inline-flex items-center rounded-lg bg-secondary px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                  +{(applicants?.length ?? 0) - 5} more
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        <Link
+          to="/jobs/$jobId"
+          params={{ jobId: String(job.id) }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-secondary"
+        >
+          <Eye className="h-3.5 w-3.5" /> View Listing
+        </Link>
+        {(job.applications_count ?? 0) > 0 && (
+          <button
+            onClick={() => onNavigate("applications")}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-secondary"
+          >
+            <Users className="h-3.5 w-3.5" /> View All Applications
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── My Jobs (with search + filter) ──────────────────────────────────────────
 
 function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
@@ -798,7 +967,7 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   const [search, setSearch] = useState("");
   const [filterSpecialty, setFilterSpecialty] = useState("");
   const [filterType, setFilterType] = useState("");
-  const [filterStatus, setFilterStatus] = useState("active");
+  const [filterStatus, setFilterStatus] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<EmpJob | null>(null);
   const [expandedJob, setExpandedJob] = useState<number | null>(null);
 
@@ -818,6 +987,7 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
       const d = r.data?.data ?? r.data;
       return Array.isArray(d) ? d : (d?.results ?? []);
     },
+    refetchOnWindowFocus: true,
   });
 
   const { data: allJobs } = useQuery<EmpJob[]>({
@@ -827,6 +997,7 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
       const d = r.data?.data ?? r.data;
       return Array.isArray(d) ? d : (d?.results ?? []);
     },
+    refetchOnWindowFocus: true,
   });
 
   const invalidate = () => {
@@ -859,7 +1030,7 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
   });
 
   const hasFilters = !!(search || filterSpecialty || filterType || (filterStatus && filterStatus !== "active"));
-  const clearFilters = () => { setSearch(""); setFilterSpecialty(""); setFilterType(""); setFilterStatus("active"); };
+  const clearFilters = () => { setSearch(""); setFilterSpecialty(""); setFilterType(""); setFilterStatus(""); };
 
   const all = allJobs ?? [];
   const activeCount  = all.filter(j => j.is_active && j.is_approved).length;
@@ -1093,41 +1264,11 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
 
                 {/* Expanded detail row */}
                 {isExpanded && (
-                  <div className="border-t border-border bg-secondary/30 px-4 py-3">
-                    <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-4">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Applications</p>
-                        <p className="font-bold text-foreground">{j.applications_count ?? 0}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Views</p>
-                        <p className="font-bold text-foreground">{j.views_count ?? 0}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Conv. Rate</p>
-                        <p className="font-bold text-foreground">{convRate}%</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Deadline</p>
-                        <p className="font-bold text-foreground">{j.application_deadline ? format(new Date(j.application_deadline), "MMM d, yyyy") : "—"}</p>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <Link
-                        to="/jobs/$jobId"
-                        params={{ jobId: String(j.id) }}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-secondary"
-                      >
-                        <Eye className="h-3.5 w-3.5" /> View Listing
-                      </Link>
-                      <button
-                        onClick={() => onNavigate("applications")}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-secondary"
-                      >
-                        <Users className="h-3.5 w-3.5" /> View Applications
-                      </button>
-                    </div>
-                  </div>
+                  <JobExpandedDetail
+                    job={j}
+                    convRate={convRate}
+                    onNavigate={onNavigate}
+                  />
                 )}
               </div>
             );
@@ -1215,12 +1356,37 @@ const INITIAL_FORM: PostJobForm = {
   application_deadline: "", contact_person: "", contact_email: "",
 };
 
-function PostJob({ onPosted, subscription }: { onPosted: () => void; subscription: UserSubscription | null }) {
+function PostJob({ onPosted, subscription, onNavigate }: { onPosted: () => void; subscription: UserSubscription | null; onNavigate: (tab: Tab) => void }) {
   const qc = useQueryClient();
   const [section, setSection] = useState<PostJobSection>("basics");
   const [form, setForm] = useState<PostJobForm>(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
+
+  const isCustomActive = subscription?.is_custom && subscription?.custom_payment_status !== "pending_payment";
+  const effectiveLimit = isCustomActive ? (subscription?.custom_job_limit ?? null) : (subscription?.job_post_limit ?? null);
+  const jobsPosted = subscription?.jobs_posted ?? 0;
+  const isAtLimit = effectiveLimit !== null && jobsPosted >= effectiveLimit;
+  const isFreeUser = !subscription || (!isCustomActive && parseFloat(subscription?.price_monthly ?? "0") === 0);
+
+  async function handleUpgradeCheckout() {
+    setCheckingOut(true);
+    try {
+      const plansRes = await api.get("/api/subscriptions/plans/employer/");
+      const plans: ApiPlan[] = plansRes.data?.data ?? plansRes.data ?? [];
+      const pro = plans.find((p) => !p.is_free && !p.is_enterprise);
+      if (!pro) { toast.error("Professional plan not found."); return; }
+      const r = await api.post("/api/subscriptions/create-checkout/", { plan_id: pro.id });
+      const url = r.data?.data?.checkout_url ?? r.data?.checkout_url;
+      if (url) window.location.href = url;
+      else toast.error("Could not start checkout. Please try again.");
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setCheckingOut(false);
+    }
+  }
 
   function update<K extends keyof PostJobForm>(k: K, v: PostJobForm[K]) {
     setForm(f => ({ ...f, [k]: v }));
@@ -1256,6 +1422,8 @@ function PostJob({ onPosted, subscription }: { onPosted: () => void; subscriptio
       await api.post("/api/jobs/", payload);
       toast.success("Job submitted for approval — it'll go live within 24 hours.");
       qc.invalidateQueries({ queryKey: ["my-jobs"] });
+      qc.invalidateQueries({ queryKey: ["my-jobs-all"] });
+      qc.invalidateQueries({ queryKey: ["my-subscription"] });
       setForm(INITIAL_FORM);
       onPosted();
     } catch (err: unknown) {
@@ -1270,11 +1438,78 @@ function PostJob({ onPosted, subscription }: { onPosted: () => void; subscriptio
     }
   }
 
+  if (isAtLimit) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+        <div className={`flex h-16 w-16 items-center justify-center rounded-2xl mb-5 ${isFreeUser ? "bg-accent/15" : "bg-amber-100"}`}>
+          {isFreeUser
+            ? <Zap className="h-8 w-8 text-accent" />
+            : <Briefcase className="h-8 w-8 text-amber-600" />}
+        </div>
+
+        <h2 className="text-2xl font-extrabold text-primary">
+          {isFreeUser ? "Job Posting Limit Reached" : `All ${effectiveLimit} Job Slots Used`}
+        </h2>
+
+        <p className="mt-3 max-w-md text-sm text-muted-foreground leading-relaxed">
+          {isFreeUser
+            ? `Your free plan allows 1 active job posting. Upgrade to Professional to post up to 5 jobs and reach more physicians across Canada.`
+            : `Your Professional plan includes ${effectiveLimit} active job postings and you've used all of them. To hire at a higher volume, apply for our Enterprise plan — custom job limits, dedicated support, and more.`}
+        </p>
+
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => onNavigate("jobs")}
+            className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold text-foreground hover:bg-secondary transition"
+          >
+            View My Jobs
+          </button>
+
+          {isFreeUser ? (
+            <button
+              type="button"
+              onClick={handleUpgradeCheckout}
+              disabled={checkingOut}
+              className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-bold text-primary hover:brightness-110 transition disabled:opacity-60"
+            >
+              {checkingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+              Upgrade to Professional
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onNavigate("billing")}
+              className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-amber-700 transition"
+            >
+              <ArrowUpRight className="h-4 w-4" />
+              Apply for Enterprise
+            </button>
+          )}
+        </div>
+
+        <div className="mt-8 flex items-center gap-3 rounded-2xl border border-border bg-card px-5 py-4 text-left max-w-sm w-full shadow-sm">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary">
+            <Briefcase className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-foreground">
+              {jobsPosted} / {effectiveLimit} slots used
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {isFreeUser ? "Upgrade to get 5 slots" : "Enterprise plans start at custom pricing"}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const currentIdx = POST_SECTIONS.findIndex(s => s.id === section);
 
   return (
     <>
-      {showUpgradeModal && <UpgradeModal onClose={() => setShowUpgradeModal(false)} />}
+      {showUpgradeModal && <UpgradeModal onClose={() => setShowUpgradeModal(false)} isPro={!isFreeUser} />}
     <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
       <nav className="flex flex-row gap-1 lg:flex-col">
         {POST_SECTIONS.map(({ id, label, icon: Icon }) => {
@@ -1913,10 +2148,93 @@ function InternalNotes({ initial, onSave, saving }: { initial: string; onSave: (
 
 // ─── Subscription Card ────────────────────────────────────────────────────────
 
+function CancelConfirmModal({
+  type, periodEnd, loading, onConfirm, onClose,
+}: {
+  type: "cancel" | "reactivate";
+  periodEnd: string | null;
+  loading: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const isCancel = type === "cancel";
+  const formattedDate = periodEnd
+    ? format(new Date(periodEnd), "MMMM d, yyyy")
+    : "the end of your billing period";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={!loading ? onClose : undefined} />
+      <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+        <button
+          onClick={onClose}
+          disabled={loading}
+          className="absolute right-4 top-4 rounded-lg p-1 text-muted-foreground hover:bg-secondary transition disabled:opacity-40"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl ${isCancel ? "bg-rose-50" : "bg-emerald-50"}`}>
+          {isCancel
+            ? <AlertTriangle className="h-6 w-6 text-rose-500" />
+            : <RefreshCw className="h-6 w-6 text-emerald-600" />}
+        </div>
+
+        <h3 className="text-lg font-bold text-primary">
+          {isCancel ? "Cancel Subscription?" : "Reactivate Subscription?"}
+        </h3>
+
+        <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+          {isCancel ? (
+            <>Your plan stays active until{" "}
+              <span className="font-semibold text-foreground">{formattedDate}</span>.
+              After that, your account reverts to the free plan and you won't be charged again.
+            </>
+          ) : (
+            <>Your subscription will be reactivated immediately. Billing will resume on your next renewal date and you'll keep all current plan benefits.</>
+          )}
+        </p>
+
+        {isCancel && (
+          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <p className="text-xs text-amber-800">
+              You can reactivate anytime before <span className="font-semibold">{formattedDate}</span> to avoid losing access.
+            </p>
+          </div>
+        )}
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary transition disabled:opacity-60"
+          >
+            {isCancel ? "Keep My Plan" : "Never Mind"}
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white transition disabled:opacity-60 ${
+              isCancel ? "bg-rose-500 hover:bg-rose-600" : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
+          >
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {isCancel ? "Yes, Cancel Plan" : "Yes, Reactivate"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SubscriptionCard({ subscription, enterpriseRequest, onUpgrade }: { subscription: UserSubscription | null; enterpriseRequest: EnterpriseRequest | null; onUpgrade: () => void }) {
   const qc = useQueryClient();
   const [cancelling, setCancelling] = useState(false);
+  const [reactivating, setReactivating] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [cancelModal, setCancelModal] = useState(false);
+  const [reactivateModal, setReactivateModal] = useState(false);
 
   // Defined early so it can be used in both the fallback and normal render path
   async function handleUpgradeCheckout() {
@@ -1938,8 +2256,8 @@ function SubscriptionCard({ subscription, enterpriseRequest, onUpgrade }: { subs
   }
 
   async function handleCancel() {
-    if (!confirm("Cancel your subscription at the end of the current billing period?")) return;
     setCancelling(true);
+    setCancelModal(false);
     try {
       await api.post("/api/subscriptions/cancel/");
       toast.success("Subscription will cancel at end of billing period.");
@@ -1948,6 +2266,20 @@ function SubscriptionCard({ subscription, enterpriseRequest, onUpgrade }: { subs
       toast.error(apiError(err));
     } finally {
       setCancelling(false);
+    }
+  }
+
+  async function handleReactivate() {
+    setReactivating(true);
+    setReactivateModal(false);
+    try {
+      await api.post("/api/subscriptions/reactivate/");
+      toast.success("Subscription reactivated! Your plan will continue as normal.");
+      qc.invalidateQueries({ queryKey: ["my-subscription"] });
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setReactivating(false);
     }
   }
 
@@ -2102,10 +2434,10 @@ function SubscriptionCard({ subscription, enterpriseRequest, onUpgrade }: { subs
               Upgrade to Professional
             </button>
           )}
-          {!isFree && !isCustomActive && isActive && !isCancelledAtEnd && (
+          {!isFree && !isCustomActive && subscription.has_stripe_subscription && !isCancelledAtEnd && (
             <button
               type="button"
-              onClick={handleCancel}
+              onClick={() => setCancelModal(true)}
               disabled={cancelling}
               className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition disabled:opacity-60"
             >
@@ -2113,8 +2445,38 @@ function SubscriptionCard({ subscription, enterpriseRequest, onUpgrade }: { subs
               Cancel plan
             </button>
           )}
+          {!isFree && !isCustomActive && subscription.has_stripe_subscription && isCancelledAtEnd && (
+            <button
+              type="button"
+              onClick={() => setReactivateModal(true)}
+              disabled={reactivating}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition disabled:opacity-60"
+            >
+              {reactivating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Reactivate plan
+            </button>
+          )}
         </div>
       </div>
+
+      {cancelModal && (
+        <CancelConfirmModal
+          type="cancel"
+          periodEnd={subscription.current_period_end ?? null}
+          loading={cancelling}
+          onConfirm={handleCancel}
+          onClose={() => setCancelModal(false)}
+        />
+      )}
+      {reactivateModal && (
+        <CancelConfirmModal
+          type="reactivate"
+          periodEnd={subscription.current_period_end ?? null}
+          loading={reactivating}
+          onConfirm={handleReactivate}
+          onClose={() => setReactivateModal(false)}
+        />
+      )}
 
       {/* Custom features list */}
       {isCustomActive && subscription.custom_features && subscription.custom_features.length > 0 && (
@@ -2231,7 +2593,7 @@ function EnterpriseRequestStatusCard({ request, onUpgrade }: { request: Enterpri
 
 // ─── Upgrade Modal ────────────────────────────────────────────────────────────
 
-function UpgradeModal({ onClose }: { onClose: () => void }) {
+function UpgradeModal({ onClose, isPro = false }: { onClose: () => void; isPro?: boolean }) {
   const [loading, setLoading] = useState(false);
 
   const PRO_FEATURES = [
@@ -2241,6 +2603,15 @@ function UpgradeModal({ onClose }: { onClose: () => void }) {
     "Dedicated account manager",
     "Priority listing in search results",
     "Advanced analytics dashboard",
+  ];
+
+  const ENTERPRISE_FEATURES = [
+    "Custom job posting limits",
+    "Dedicated account manager",
+    "Bulk hiring & volume discounts",
+    "Priority candidate matching",
+    "Custom contract & billing",
+    "SLA-backed support",
   ];
 
   async function handleUpgrade() {
@@ -2261,6 +2632,25 @@ function UpgradeModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  async function handleEnterpriseRequest() {
+    setLoading(true);
+    try {
+      await api.post("/api/subscriptions/enterprise/request/", {
+        organization_name: "",
+        contact_name: "",
+        contact_email: "",
+        monthly_hiring_volume: "6_10",
+        message: "Interested in Enterprise plan — reached Professional job limit.",
+      });
+      toast.success("Enterprise inquiry submitted. Our team will contact you shortly.");
+      onClose();
+    } catch {
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl">
@@ -2273,18 +2663,23 @@ function UpgradeModal({ onClose }: { onClose: () => void }) {
         </button>
 
         <div className="p-6">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/15 text-accent">
-            <Zap className="h-6 w-6" />
+          <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${isPro ? "bg-amber-100" : "bg-accent/15"}`}>
+            {isPro ? <Briefcase className="h-6 w-6 text-amber-600" /> : <Zap className="h-6 w-6 text-accent" />}
           </div>
-          <h2 className="mt-4 text-xl font-bold text-primary">Upgrade to Professional</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            You've reached your free plan job posting limit. Upgrade to post up to 5 jobs and access premium features.
+
+          <h2 className="mt-4 text-xl font-bold text-primary">
+            {isPro ? "All Job Slots Used" : "Upgrade to Professional"}
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+            {isPro
+              ? "You've reached your Professional plan's 5-job limit. Apply for our Enterprise plan to get custom job posting limits and dedicated support."
+              : "You've reached your free plan job posting limit. Upgrade to post up to 5 jobs and access premium features."}
           </p>
 
           <ul className="mt-5 space-y-2.5">
-            {PRO_FEATURES.map((f) => (
+            {(isPro ? ENTERPRISE_FEATURES : PRO_FEATURES).map((f) => (
               <li key={f} className="flex items-center gap-2.5 text-sm text-foreground">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${isPro ? "bg-amber-100 text-amber-600" : "bg-accent/15 text-accent"}`}>
                   <CheckCircle2 className="h-3 w-3" />
                 </span>
                 {f}
@@ -2292,10 +2687,12 @@ function UpgradeModal({ onClose }: { onClose: () => void }) {
             ))}
           </ul>
 
-          <div className="mt-6 rounded-xl border border-accent/20 bg-accent/5 p-4 text-center">
-            <p className="text-3xl font-extrabold text-primary">$499<span className="text-base font-normal text-muted-foreground">/month</span></p>
-            <p className="mt-1 text-xs text-muted-foreground">Cancel anytime · no long-term commitment</p>
-          </div>
+          {!isPro && (
+            <div className="mt-6 rounded-xl border border-accent/20 bg-accent/5 p-4 text-center">
+              <p className="text-3xl font-extrabold text-primary">$499<span className="text-base font-normal text-muted-foreground">/month</span></p>
+              <p className="mt-1 text-xs text-muted-foreground">Cancel anytime · no long-term commitment</p>
+            </div>
+          )}
 
           <div className="mt-5 flex gap-3">
             <button
@@ -2305,15 +2702,27 @@ function UpgradeModal({ onClose }: { onClose: () => void }) {
             >
               Maybe later
             </button>
-            <button
-              type="button"
-              onClick={handleUpgrade}
-              disabled={loading}
-              className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-bold text-primary hover:brightness-110 transition disabled:opacity-60"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-              Upgrade Now
-            </button>
+            {isPro ? (
+              <button
+                type="button"
+                onClick={handleEnterpriseRequest}
+                disabled={loading}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-amber-700 transition disabled:opacity-60"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
+                Apply for Enterprise
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleUpgrade}
+                disabled={loading}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-bold text-primary hover:brightness-110 transition disabled:opacity-60"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                Upgrade Now
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -2384,6 +2793,39 @@ interface PaymentRecord {
 
 function BillingHistory({ subscription }: { subscription: UserSubscription | null }) {
   const user = useAuthStore((s) => s.user);
+  const qc = useQueryClient();
+  const [cancelling, setCancelling] = useState(false);
+  const [reactivating, setReactivating] = useState(false);
+  const [cancelModal, setCancelModal] = useState(false);
+  const [reactivateModal, setReactivateModal] = useState(false);
+
+  async function handleCancel() {
+    setCancelling(true);
+    setCancelModal(false);
+    try {
+      await api.post("/api/subscriptions/cancel/");
+      toast.success("Subscription will cancel at end of billing period.");
+      qc.invalidateQueries({ queryKey: ["my-subscription"] });
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  async function handleReactivate() {
+    setReactivating(true);
+    setReactivateModal(false);
+    try {
+      await api.post("/api/subscriptions/reactivate/");
+      toast.success("Subscription reactivated! Your plan will continue as normal.");
+      qc.invalidateQueries({ queryKey: ["my-subscription"] });
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setReactivating(false);
+    }
+  }
 
   const { data: payments, isLoading } = useQuery<PaymentRecord[]>({
     queryKey: ["my-payments"],
@@ -2654,54 +3096,120 @@ function BillingHistory({ subscription }: { subscription: UserSubscription | nul
           </div>
 
           {/* Current subscription details */}
-          {subscription && (
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-              <h3 className="mb-3 font-bold text-primary">Subscription Details</h3>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">Plan</p>
-                  <p className="font-semibold text-foreground">{planName}</p>
+          {subscription && (() => {
+            const isFree = !isCustomActive && (parseFloat(planPrice ?? "0") === 0);
+            const isCancelledAtEnd = subscription.cancel_at_period_end;
+            const hasStripe = subscription.has_stripe_subscription;
+            return (
+              <div className={`rounded-2xl border p-5 shadow-sm ${
+                isCancelledAtEnd ? "border-amber-200 bg-amber-50" : "border-border bg-card"
+              }`}>
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                  <h3 className="font-bold text-primary">Subscription Details</h3>
+                  <div className="flex items-center gap-2">
+                    {/* Cancel at period end notice */}
+                    {isCancelledAtEnd && subscription.current_period_end && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                        Cancels {format(new Date(subscription.current_period_end), "MMM d, yyyy")}
+                      </span>
+                    )}
+                    {/* Reactivate button */}
+                    {!isFree && !isCustomActive && hasStripe && isCancelledAtEnd && (
+                      <button
+                        onClick={() => setReactivateModal(true)}
+                        disabled={reactivating}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition disabled:opacity-60"
+                      >
+                        {reactivating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                        Reactivate Plan
+                      </button>
+                    )}
+                    {/* Cancel button */}
+                    {!isFree && !isCustomActive && hasStripe && !isCancelledAtEnd && (
+                      <button
+                        onClick={() => setCancelModal(true)}
+                        disabled={cancelling}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition disabled:opacity-60"
+                      >
+                        {cancelling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                        Cancel Plan
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Status</p>
-                  <p className={`font-semibold ${subscription.status === "active" ? "text-emerald-600" : "text-rose-600"}`}>
-                    {subscription.status.charAt(0).toUpperCase() + subscription.status.slice(1)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Monthly Price</p>
-                  <p className="font-semibold text-foreground">
-                    {planPrice && parseFloat(planPrice) > 0 ? `$${parseFloat(planPrice).toFixed(2)}/mo` : "Free"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Job Post Limit</p>
-                  <p className="font-semibold text-foreground">
-                    {isCustomActive ? (subscription.custom_job_limit ?? "Unlimited") : (subscription.job_post_limit ?? "—")}
-                  </p>
-                </div>
-                {subscription.current_period_end && (
+                <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm sm:grid-cols-4">
                   <div>
-                    <p className="text-xs text-muted-foreground">Renews / Expires</p>
-                    <p className="font-semibold text-foreground">
-                      {format(new Date(subscription.current_period_end), "MMMM d, yyyy")}
+                    <p className="text-xs text-muted-foreground">Plan</p>
+                    <p className="font-semibold text-foreground">{planName}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <p className={`font-semibold ${
+                      isCancelledAtEnd ? "text-amber-600"
+                      : subscription.status === "active" ? "text-emerald-600"
+                      : "text-rose-600"
+                    }`}>
+                      {isCancelledAtEnd
+                        ? "Cancelling at period end"
+                        : subscription.status.charAt(0).toUpperCase() + subscription.status.slice(1)}
                     </p>
                   </div>
-                )}
-                {isCustomActive && subscription.custom_valid_until && (
                   <div>
-                    <p className="text-xs text-muted-foreground">Custom Plan Valid Until</p>
+                    <p className="text-xs text-muted-foreground">Monthly Price</p>
                     <p className="font-semibold text-foreground">
-                      {format(new Date(subscription.custom_valid_until), "MMMM d, yyyy")}
+                      {planPrice && parseFloat(planPrice) > 0 ? `$${parseFloat(planPrice).toFixed(2)}/mo` : "Free"}
                     </p>
                   </div>
-                )}
+                  <div>
+                    <p className="text-xs text-muted-foreground">Job Post Limit</p>
+                    <p className="font-semibold text-foreground">
+                      {isCustomActive ? (subscription.custom_job_limit ?? "Unlimited") : (subscription.job_post_limit ?? "—")}
+                    </p>
+                  </div>
+                  {subscription.current_period_end && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">
+                        {isCancelledAtEnd ? "Access Until" : "Renews On"}
+                      </p>
+                      <p className="font-semibold text-foreground">
+                        {format(new Date(subscription.current_period_end), "MMMM d, yyyy")}
+                      </p>
+                    </div>
+                  )}
+                  {isCustomActive && subscription.custom_valid_until && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Custom Plan Valid Until</p>
+                      <p className="font-semibold text-foreground">
+                        {format(new Date(subscription.custom_valid_until), "MMMM d, yyyy")}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
         </div>
       </div>
+
+      {cancelModal && subscription && (
+        <CancelConfirmModal
+          type="cancel"
+          periodEnd={subscription.current_period_end ?? null}
+          loading={cancelling}
+          onConfirm={handleCancel}
+          onClose={() => setCancelModal(false)}
+        />
+      )}
+      {reactivateModal && subscription && (
+        <CancelConfirmModal
+          type="reactivate"
+          periodEnd={subscription.current_period_end ?? null}
+          loading={reactivating}
+          onConfirm={handleReactivate}
+          onClose={() => setReactivateModal(false)}
+        />
+      )}
     </>
   );
 }

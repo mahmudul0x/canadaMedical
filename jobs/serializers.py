@@ -1,7 +1,11 @@
+import logging
 from django.db import IntegrityError
 from rest_framework import serializers
 from accounts.serializers import validate_resume_file
-from .models import Job, JobApplication, SavedJob, SPECIALTY_CHOICES, SUB_SPECIALTY_CHOICES, PROVINCE_CHOICES
+from core.constants import SPECIALTY_CHOICES, SUB_SPECIALTY_CHOICES, PROVINCE_CHOICES, SPECIALTY_MAP
+from .models import Job, JobApplication, SavedJob
+
+logger = logging.getLogger(__name__)
 
 
 class JobListSerializer(serializers.ModelSerializer):
@@ -13,7 +17,7 @@ class JobListSerializer(serializers.ModelSerializer):
     practice_setting_display = serializers.CharField(source='get_practice_setting_display', read_only=True)
     salary_min = serializers.FloatField(read_only=True)
     salary_max = serializers.FloatField(read_only=True)
-    applications_count = serializers.IntegerField(source='applications.count', read_only=True)
+    applications_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Job
@@ -44,7 +48,12 @@ class JobDetailSerializer(serializers.ModelSerializer):
     required_experience_display = serializers.CharField(source='get_required_experience_display', read_only=True)
     salary_min = serializers.FloatField(read_only=True)
     salary_max = serializers.FloatField(read_only=True)
-    total_applications = serializers.IntegerField(source='applications.count', read_only=True)
+    applications_count = serializers.SerializerMethodField()
+
+    def get_applications_count(self, obj):
+        if hasattr(obj, 'applications_count'):
+            return obj.applications_count
+        return obj.applications.count()
 
     class Meta:
         model = Job
@@ -63,7 +72,7 @@ class JobDetailSerializer(serializers.ModelSerializer):
             'compensation_model', 'compensation_model_display',
             'employer_name', 'employer_type', 'employer_website',
             'remote_option', 'relocation_assistance', 'is_featured',
-            'is_active', 'is_approved', 'views_count', 'total_applications',
+            'is_active', 'is_approved', 'views_count', 'applications_count',
             'created_at', 'updated_at',
         ]
 
@@ -100,31 +109,8 @@ class JobCreateUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        instance.save()
+        instance.save(update_fields=list(validated_data.keys()) + ['updated_at'])
         return instance
-
-
-class ApplicationPhysicianSerializer(serializers.Serializer):
-    id = serializers.IntegerField(source='physician.id')
-    full_name = serializers.CharField(source='physician.user.full_name')
-    email = serializers.CharField(source='physician.user.email')
-    specialty = serializers.CharField(source='physician.specialty')
-    specialty_display = serializers.SerializerMethodField()
-    cpso_number = serializers.CharField(source='physician.cpso_number')
-    board_certifications = serializers.CharField(source='physician.board_certifications')
-    profile_resume_url = serializers.SerializerMethodField()
-
-    def get_specialty_display(self, obj):
-        return dict(SPECIALTY_CHOICES).get(obj.physician.specialty, obj.physician.specialty)
-
-    def get_profile_resume_url(self, obj):
-        request = self.context.get('request')
-        if obj.physician.resume:
-            try:
-                return request.build_absolute_uri(obj.physician.resume.url) if request else obj.physician.resume.url
-            except Exception:
-                return None
-        return None
 
 
 class JobApplicationSerializer(serializers.ModelSerializer):
@@ -158,14 +144,15 @@ class JobApplicationSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'status', 'applied_at', 'updated_at']
 
     def get_physician_specialty_display(self, obj):
-        return dict(SPECIALTY_CHOICES).get(obj.physician.specialty, obj.physician.specialty)
+        return SPECIALTY_MAP.get(obj.physician.specialty, obj.physician.specialty)
 
     def get_resume_url(self, obj):
         request = self.context.get('request')
         if obj.resume:
             try:
                 return request.build_absolute_uri(obj.resume.url) if request else obj.resume.url
-            except Exception:
+            except (ValueError, AttributeError) as exc:
+                logger.warning('Could not build resume URL for application %s: %s', obj.pk, exc)
                 return None
         return None
 
@@ -174,7 +161,8 @@ class JobApplicationSerializer(serializers.ModelSerializer):
         if obj.physician.resume:
             try:
                 return request.build_absolute_uri(obj.physician.resume.url) if request else obj.physician.resume.url
-            except Exception:
+            except (ValueError, AttributeError) as exc:
+                logger.warning('Could not build profile resume URL for physician %s: %s', obj.physician_id, exc)
                 return None
         return None
 

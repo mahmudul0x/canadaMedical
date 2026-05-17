@@ -66,17 +66,19 @@ class IsAdminOrReadOnly(BasePermission):
     def has_permission(self, request, view):
         if request.method in ('GET', 'HEAD', 'OPTIONS'):
             return True
-        return request.user and request.user.is_staff
+        return bool(request.user and request.user.is_authenticated and request.user.is_staff)
 
 
 class IsOwnerOrAdmin(BasePermission):
     def has_object_permission(self, request, view, obj):
+        if not (request.user and request.user.is_authenticated):
+            return False
         if request.user.is_staff:
             return True
         if hasattr(obj, 'employer'):
-            return obj.employer.user == request.user
+            return obj.employer.user_id == request.user.pk
         if hasattr(obj, 'physician'):
-            return obj.physician.user == request.user
+            return obj.physician.user_id == request.user.pk
         if hasattr(obj, 'user'):
-            return obj.user == request.user
+            return obj.user_id == request.user.pk
         return False

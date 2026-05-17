@@ -1,93 +1,11 @@
 import uuid
-import os
 from django.db import models
 from accounts.models import PhysicianProfile, EmployerProfile
-
-SPECIALTY_CHOICES = [
-    ('anatomical_pathology', 'Anatomical Pathology'),
-    ('anesthesiology', 'Anesthesiology'),
-    ('cardiac_surgery', 'Cardiac Surgery'),
-    ('dermatology', 'Dermatology'),
-    ('diagnostic_radiology', 'Diagnostic Radiology'),
-    ('emergency_medicine', 'Emergency Medicine'),
-    ('family_medicine', 'Family Medicine'),
-    ('internal_medicine', 'Internal Medicine'),
-    ('general_surgery', 'General Surgery'),
-    ('neurology', 'Neurology'),
-    ('obstetrics_gynecology', 'Obstetrics and Gynecology'),
-    ('pediatrics', 'Pediatrics'),
-    ('psychiatry', 'Psychiatry'),
-    ('urology', 'Urology'),
-    ('vascular_surgery', 'Vascular Surgery'),
-    ('other', 'Other'),
-]
-
-SUB_SPECIALTY_CHOICES = [
-    ('cardiology', 'Cardiology'),
-    ('critical_care', 'Critical Care Medicine'),
-    ('gastroenterology', 'Gastroenterology'),
-    ('geriatric_medicine', 'Geriatric Medicine'),
-    ('hematology', 'Hematology'),
-    ('infectious_diseases', 'Infectious Diseases'),
-    ('medical_oncology', 'Medical Oncology'),
-    ('nephrology', 'Nephrology'),
-    ('pain_medicine', 'Pain Medicine'),
-    ('palliative_medicine', 'Palliative Medicine'),
-    ('respirology', 'Respirology'),
-    ('rheumatology', 'Rheumatology'),
-    ('thoracic_surgery', 'Thoracic Surgery'),
-    ('other', 'Other'),
-]
-
-PROVINCE_CHOICES = [
-    ('AB', 'Alberta'),
-    ('BC', 'British Columbia'),
-    ('MB', 'Manitoba'),
-    ('NB', 'New Brunswick'),
-    ('NL', 'Newfoundland and Labrador'),
-    ('NT', 'Northwest Territories'),
-    ('NS', 'Nova Scotia'),
-    ('NU', 'Nunavut'),
-    ('ON', 'Ontario'),
-    ('PE', 'Prince Edward Island'),
-    ('QC', 'Quebec'),
-    ('SK', 'Saskatchewan'),
-    ('YT', 'Yukon'),
-]
-
-JOB_TYPE_CHOICES = [
-    ('full_time', 'Full Time'),
-    ('part_time', 'Part Time'),
-    ('locum', 'Locum'),
-    ('contract', 'Contract'),
-    ('fellowship', 'Fellowship'),
-]
-
-PRACTICE_SETTING_CHOICES = [
-    ('urban', 'Urban'),
-    ('suburban', 'Suburban'),
-    ('rural', 'Rural'),
-    ('northern_remote', 'Northern / Remote'),
-    ('academic_teaching', 'Academic / Teaching'),
-    ('community_hospital', 'Community Hospital'),
-    ('private_clinic', 'Private Clinic'),
-]
-
-COMPENSATION_MODEL_CHOICES = [
-    ('salary', 'Salary'),
-    ('fee_for_service', 'Fee for Service'),
-    ('alternative_payment', 'Alternative Payment Plan'),
-    ('blended', 'Blended Model'),
-    ('contract_rate', 'Contract Rate'),
-]
-
-EXPERIENCE_LEVEL_CHOICES = [
-    ('new_grad', 'New Graduate'),
-    ('1_3_years', '1–3 Years'),
-    ('3_5_years', '3–5 Years'),
-    ('5_10_years', '5–10 Years'),
-    ('10_plus', '10+ Years'),
-]
+from core.constants import (
+    SPECIALTY_CHOICES, SUB_SPECIALTY_CHOICES, PROVINCE_CHOICES,
+    JOB_TYPE_CHOICES, PRACTICE_SETTING_CHOICES, COMPENSATION_MODEL_CHOICES,
+    EXPERIENCE_LEVEL_CHOICES, APPLICATION_STATUS_CHOICES,
+)
 
 
 def application_resume_path(instance, filename):
@@ -135,8 +53,11 @@ class Job(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['is_active', 'is_approved'], name='job_active_approved_idx'),
+            models.Index(fields=['employer', 'is_active'], name='job_employer_active_idx'),
             models.Index(fields=['specialty'], name='job_specialty_idx'),
             models.Index(fields=['province'], name='job_province_idx'),
+            models.Index(fields=['job_type', 'province'], name='job_type_province_idx'),
+            models.Index(fields=['-created_at'], name='job_created_at_idx'),
         ]
 
     def __str__(self):
@@ -150,15 +71,7 @@ class Job(models.Model):
 
 
 class JobApplication(models.Model):
-    STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('reviewed', 'Reviewed'),
-        ('shortlisted', 'Shortlisted'),
-        ('interview', 'Interview'),
-        ('offered', 'Offered'),
-        ('rejected', 'Rejected'),
-        ('withdrawn', 'Withdrawn'),
-    ]
+    STATUS_CHOICES = APPLICATION_STATUS_CHOICES
 
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name='applications')
     physician = models.ForeignKey(PhysicianProfile, on_delete=models.CASCADE, related_name='applications')
@@ -178,6 +91,10 @@ class JobApplication(models.Model):
     class Meta:
         unique_together = ('job', 'physician')
         ordering = ['-applied_at']
+        indexes = [
+            models.Index(fields=['physician', 'status'], name='app_physician_status_idx'),
+            models.Index(fields=['job', 'status'], name='app_job_status_idx'),
+        ]
 
     def __str__(self):
         return f'{self.physician.user.full_name} → {self.job.title}'

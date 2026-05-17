@@ -16,11 +16,12 @@ def _push_to_channel(group_name: str, notification_data: dict):
             group_name,
             {'type': 'notify', 'notification': notification_data},
         )
-    except Exception:
-        logger.exception('Failed to push notification to channel %s', group_name)
+    except (RuntimeError, OSError) as exc:
+        logger.warning('Failed to push notification to channel %s: %s', group_name, exc)
 
 
 def _create_notification(user, notification_type, title, message, link=''):
+    from django.db import DatabaseError
     from .models import Notification
     try:
         n = Notification.objects.create(
@@ -31,8 +32,8 @@ def _create_notification(user, notification_type, title, message, link=''):
             link=link,
         )
         return n
-    except Exception:
-        logger.exception('Failed to create notification: %s', title)
+    except DatabaseError as exc:
+        logger.exception('Failed to create notification "%s": %s', title, exc)
         return None
 
 
@@ -75,10 +76,11 @@ def _notify_admins(notification_type, title, message, link=''):
 @receiver(post_save, sender='jobs.Job')
 def on_new_job(sender, instance, created, **kwargs):
     if created:
+        company_name = getattr(instance.employer, 'company_name', 'Unknown employer')
         _notify_admins(
             'admin_job',
             f'New job pending approval: {instance.title}',
-            f'"{instance.title}" posted by {instance.employer.company_name} is pending review.',
+            f'"{instance.title}" posted by {company_name} is pending review.',
             link='/admin/jobs',
         )
 
@@ -148,27 +150,29 @@ def on_new_application(sender, instance, created, **kwargs):
 
 
 @receiver(post_save, sender='jobs.Job')
-def on_job_status_change(sender, instance, created, **kwargs):
+def on_job_status_change(sender, instance, created, update_fields=None, **kwargs):
     if created:
         return
-    if instance.status in ('approved', 'rejected'):
-        employer_user = instance.employer.user
-        if instance.status == 'approved':
-            _notify_user(
-                employer_user,
-                'employer_job_approved',
-                f'Job approved: {instance.title}',
-                f'Your job posting "{instance.title}" has been approved and is now live.',
-                link='/dashboard/employer',
-            )
-        else:
-            _notify_user(
-                employer_user,
-                'employer_job_rejected',
-                f'Job rejected: {instance.title}',
-                f'Your job posting "{instance.title}" was not approved. Please review and resubmit.',
-                link='/dashboard/employer',
-            )
+    update_fields = update_fields or []
+    employer_user = instance.employer.user
+    if 'is_approved' in update_fields and instance.is_approved:
+        _notify_user(
+            employer_user,
+            'employer_job_approved',
+            f'Job approved: {instance.title}',
+            f'Your job posting "{instance.title}" has been approved and is now live.',
+            link='/dashboard/employer',
+        )
+    elif 'rejection_reason' in update_fields or (
+        'is_approved' in update_fields and not instance.is_approved and not instance.is_active
+    ):
+        _notify_user(
+            employer_user,
+            'employer_job_rejected',
+            f'Job rejected: {instance.title}',
+            f'Your job posting "{instance.title}" was not approved. Please review and resubmit.',
+            link='/dashboard/employer',
+        )
 
 
 # ── Physician notifications ────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import uuid
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
+from core.constants import SPECIALTY_CHOICES, SUB_SPECIALTY_CHOICES
 
 
 class CustomUserManager(BaseUserManager):
@@ -67,42 +68,6 @@ def physician_resume_path(instance, filename):
 
 
 class PhysicianProfile(models.Model):
-    SPECIALTY_CHOICES = [
-        ('anatomical_pathology', 'Anatomical Pathology'),
-        ('anesthesiology', 'Anesthesiology'),
-        ('cardiac_surgery', 'Cardiac Surgery'),
-        ('dermatology', 'Dermatology'),
-        ('diagnostic_radiology', 'Diagnostic Radiology'),
-        ('emergency_medicine', 'Emergency Medicine'),
-        ('family_medicine', 'Family Medicine'),
-        ('internal_medicine', 'Internal Medicine'),
-        ('general_surgery', 'General Surgery'),
-        ('neurology', 'Neurology'),
-        ('obstetrics_gynecology', 'Obstetrics and Gynecology'),
-        ('pediatrics', 'Pediatrics'),
-        ('psychiatry', 'Psychiatry'),
-        ('urology', 'Urology'),
-        ('vascular_surgery', 'Vascular Surgery'),
-        ('other', 'Other'),
-    ]
-
-    SUB_SPECIALTY_CHOICES = [
-        ('cardiology', 'Cardiology'),
-        ('critical_care', 'Critical Care Medicine'),
-        ('gastroenterology', 'Gastroenterology'),
-        ('geriatric_medicine', 'Geriatric Medicine'),
-        ('hematology', 'Hematology'),
-        ('infectious_diseases', 'Infectious Diseases'),
-        ('medical_oncology', 'Medical Oncology'),
-        ('nephrology', 'Nephrology'),
-        ('pain_medicine', 'Pain Medicine'),
-        ('palliative_medicine', 'Palliative Medicine'),
-        ('respirology', 'Respirology'),
-        ('rheumatology', 'Rheumatology'),
-        ('thoracic_surgery', 'Thoracic Surgery'),
-        ('other', 'Other'),
-    ]
-
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='physician_profile')
     specialty = models.CharField(max_length=50, choices=SPECIALTY_CHOICES, blank=True)
     sub_specialty = models.CharField(max_length=50, choices=SUB_SPECIALTY_CHOICES, blank=True)
