@@ -95,6 +95,8 @@ APPLICATION_STATUS_CHOICES = [
     ('shortlisted', 'Shortlisted'),
     ('interview', 'Interview'),
     ('offered', 'Offered'),
+    ('accepted', 'Accepted'),
+    ('offer_declined', 'Offer Declined'),
     ('rejected', 'Rejected'),
     ('withdrawn', 'Withdrawn'),
 ]

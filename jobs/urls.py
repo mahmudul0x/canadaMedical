@@ -19,6 +19,8 @@ from .views import (
     PracticeSettingsListView,
     JobApplicationsForEmployerView,
     UpdateApplicationStatusView,
+    RespondToOfferView,
+    SendApplicationEmailView,
     FeaturedRecruitersView,
     JobPDFView,
 )
@@ -41,6 +43,8 @@ urlpatterns = [
     path('<int:pk>/save/', SaveJobView.as_view(), name='save-job'),
     path('<int:pk>/unsave/', UnsaveJobView.as_view(), name='unsave-job'),
     path('applications/<int:pk>/status/', UpdateApplicationStatusView.as_view(), name='update-application-status'),
+    path('applications/<int:pk>/respond-offer/', RespondToOfferView.as_view(), name='respond-to-offer'),
+    path('applications/<int:pk>/send-email/', SendApplicationEmailView.as_view(), name='send-application-email'),
     path('applications/<int:pk>/', WithdrawApplicationView.as_view(), name='withdraw-application'),
     path('featured-recruiters/', FeaturedRecruitersView.as_view(), name='featured-recruiters'),
     path('<int:pk>/applications/', JobApplicationsForEmployerView.as_view(), name='job-applications-for-employer'),

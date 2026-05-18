@@ -133,19 +133,30 @@ def on_new_contact(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender='jobs.JobApplication')
 def on_new_application(sender, instance, created, **kwargs):
-    if created:
-        employer_user = instance.job.employer.user
-        physician_name = (
-            instance.physician.user.full_name
-            if hasattr(instance, 'physician') and instance.physician
-            else 'A physician'
-        )
-        _notify_user(
-            employer_user,
-            'employer_application',
-            f'New application for {instance.job.title}',
-            f'{physician_name} applied for your "{instance.job.title}" position.',
-            link='/dashboard/employer',
+    if not created:
+        return
+    from emails.tasks import send_new_application_email_task, send_application_confirmation_task
+
+    employer_user = instance.job.employer.user
+    physician_name = (
+        instance.physician.user.full_name
+        if hasattr(instance, 'physician') and instance.physician
+        else 'A physician'
+    )
+    _notify_user(
+        employer_user,
+        'employer_application',
+        f'New application for {instance.job.title}',
+        f'{physician_name} applied for your "{instance.job.title}" position.',
+        link='/dashboard/employer?tab=applications',
+    )
+    # Fire-and-forget — emails sent async in background worker
+    send_new_application_email_task.delay(employer_user.pk, physician_name, instance.job.title)
+    if hasattr(instance, 'physician') and instance.physician:
+        send_application_confirmation_task.delay(
+            instance.physician.user.pk,
+            instance.job.title,
+            getattr(instance.job.employer, 'company_name', ''),
         )
 
 
@@ -153,6 +164,8 @@ def on_new_application(sender, instance, created, **kwargs):
 def on_job_status_change(sender, instance, created, update_fields=None, **kwargs):
     if created:
         return
+    from emails.tasks import send_job_approved_email_task, send_job_rejected_email_task
+
     update_fields = update_fields or []
     employer_user = instance.employer.user
     if 'is_approved' in update_fields and instance.is_approved:
@@ -161,8 +174,9 @@ def on_job_status_change(sender, instance, created, update_fields=None, **kwargs
             'employer_job_approved',
             f'Job approved: {instance.title}',
             f'Your job posting "{instance.title}" has been approved and is now live.',
-            link='/dashboard/employer',
+            link='/dashboard/employer?tab=jobs',
         )
+        send_job_approved_email_task.delay(employer_user.pk, instance.title)
     elif 'rejection_reason' in update_fields or (
         'is_approved' in update_fields and not instance.is_approved and not instance.is_active
     ):
@@ -171,7 +185,12 @@ def on_job_status_change(sender, instance, created, update_fields=None, **kwargs
             'employer_job_rejected',
             f'Job rejected: {instance.title}',
             f'Your job posting "{instance.title}" was not approved. Please review and resubmit.',
-            link='/dashboard/employer',
+            link='/dashboard/employer?tab=jobs',
+        )
+        send_job_rejected_email_task.delay(
+            employer_user.pk,
+            instance.title,
+            getattr(instance, 'rejection_reason', '') or '',
         )
 
 
@@ -181,15 +200,17 @@ def on_job_status_change(sender, instance, created, update_fields=None, **kwargs
 def on_application_status_change(sender, instance, created, **kwargs):
     if created:
         return
+    from emails.tasks import send_application_status_email_task
+
     physician_user = instance.physician.user if hasattr(instance, 'physician') and instance.physician else None
     if not physician_user:
         return
     status_labels = {
-        'reviewed': 'Your application has been reviewed.',
+        'reviewed':    'Your application has been reviewed.',
         'shortlisted': 'You have been shortlisted for an interview!',
-        'interview': 'You have been invited to an interview.',
-        'offered': 'Congratulations — you have received a job offer!',
-        'rejected': 'Your application was not selected at this time.',
+        'interview':   'You have been invited to an interview.',
+        'offered':     'Congratulations — you have received a job offer!',
+        'rejected':    'Your application was not selected at this time.',
     }
     label = status_labels.get(instance.status)
     if label:
@@ -198,5 +219,12 @@ def on_application_status_change(sender, instance, created, **kwargs):
             'physician_app_status',
             f'Application update for {instance.job.title}',
             label,
-            link='/dashboard/physician',
+            link=f'/dashboard/physician?tab=applications&app={instance.pk}',
+        )
+        employer_name = getattr(instance.job.employer, 'company_name', '') or ''
+        send_application_status_email_task.delay(
+            physician_user.pk,
+            instance.job.title,
+            employer_name,
+            instance.status,
         )

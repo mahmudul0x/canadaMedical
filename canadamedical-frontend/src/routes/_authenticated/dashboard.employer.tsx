@@ -25,8 +25,11 @@ import { NotificationBell } from "@/components/site/NotificationBell";
 
 export const Route = createFileRoute("/_authenticated/dashboard/employer")({
   head: () => ({ meta: [{ title: "Employer Dashboard — MedConnect Canada" }] }),
-  validateSearch: (s: Record<string, unknown>): { subscription?: string } => ({
+  validateSearch: (s: Record<string, unknown>): { subscription?: string; session_id?: string; tab?: string; enterprise?: string } => ({
     subscription: typeof s.subscription === "string" ? s.subscription : undefined,
+    session_id: typeof s.session_id === "string" ? s.session_id : undefined,
+    tab: typeof s.tab === "string" ? s.tab : undefined,
+    enterprise: typeof s.enterprise === "string" ? s.enterprise : undefined,
   }),
   component: EmployerDashboard,
 });
@@ -56,7 +59,7 @@ interface UserSubscription {
 
 interface EnterpriseRequest {
   id: number;
-  status: "pending" | "reviewing" | "approved" | "rejected";
+  status: "pending" | "reviewing" | "approved" | "rejected" | "revoked";
   organization_name: string;
   created_at: string;
   rejected_reason?: string;
@@ -64,6 +67,14 @@ interface EnterpriseRequest {
   custom_price_monthly?: string | null;
   custom_features?: string[];
   approved_at?: string | null;
+  admin_notes?: string;
+  custom_payment_status?: "pending_payment" | "paid" | "free" | "revoked" | null;
+  custom_payment_link?: string | null;
+  num_job_posts?: number | null;
+  featured_jobs?: number | null;
+  hiring_duration?: string;
+  additional_services?: string;
+  budget_range?: string;
 }
 
 interface ApiPlan {
@@ -114,22 +125,32 @@ const EXPERIENCE_LEVELS = [
 ];
 
 const APP_STATUSES = [
-  { value: "pending", label: "Pending" },
-  { value: "reviewed", label: "Reviewed" },
-  { value: "shortlisted", label: "Shortlisted" },
-  { value: "interview", label: "Interview" },
-  { value: "offered", label: "Offered" },
-  { value: "rejected", label: "Rejected" },
+  { value: "pending",        label: "Pending" },
+  { value: "reviewed",       label: "Reviewed" },
+  { value: "shortlisted",    label: "Shortlisted" },
+  { value: "interview",      label: "Interview" },
+  { value: "offered",        label: "Offered" },
+  { value: "accepted",       label: "Hired" },
+  { value: "offer_declined", label: "Offer Declined" },
+  { value: "rejected",       label: "Rejected" },
 ];
 
+// Only statuses the employer can set — physician-decided ones are read-only
+const EMPLOYER_SETTABLE_STATUSES = APP_STATUSES.filter(
+  s => !["accepted", "offer_declined", "withdrawn"].includes(s.value)
+);
+const PHYSICIAN_DECIDED = ["accepted", "offer_declined"];
+
 const APP_STATUS_META: Record<string, { bg: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
-  pending:     { bg: "bg-amber-100",   color: "text-amber-800",   icon: Clock },
-  reviewed:    { bg: "bg-blue-100",    color: "text-blue-800",    icon: Eye },
-  shortlisted: { bg: "bg-violet-100",  color: "text-violet-800",  icon: Star },
-  interview:   { bg: "bg-indigo-100",  color: "text-indigo-800",  icon: Calendar },
-  offered:     { bg: "bg-emerald-100", color: "text-emerald-800", icon: Award },
-  rejected:    { bg: "bg-rose-100",    color: "text-rose-800",    icon: XCircle },
-  withdrawn:   { bg: "bg-slate-100",   color: "text-slate-700",   icon: AlertCircle },
+  pending:       { bg: "bg-amber-100",   color: "text-amber-800",   icon: Clock },
+  reviewed:      { bg: "bg-blue-100",    color: "text-blue-800",    icon: Eye },
+  shortlisted:   { bg: "bg-violet-100",  color: "text-violet-800",  icon: Star },
+  interview:     { bg: "bg-indigo-100",  color: "text-indigo-800",  icon: Calendar },
+  offered:       { bg: "bg-amber-100",   color: "text-amber-800",   icon: Award },
+  accepted:      { bg: "bg-emerald-100", color: "text-emerald-800", icon: CheckCircle2 },
+  offer_declined:{ bg: "bg-slate-100",   color: "text-slate-700",   icon: XCircle },
+  rejected:      { bg: "bg-rose-100",    color: "text-rose-800",    icon: XCircle },
+  withdrawn:     { bg: "bg-slate-100",   color: "text-slate-700",   icon: AlertCircle },
 };
 
 interface EmpJob {
@@ -210,26 +231,81 @@ function SubSpecialtySelect({ specialty, value, onChange }: {
 }
 
 function EmployerDashboard() {
-  const [tab, setTab] = useState<Tab>("overview");
+  const VALID_TABS: Tab[] = ["overview", "jobs", "post", "applications", "profile", "billing"];
+  const { subscription: subParam, session_id: sessionId, tab: tabParam, enterprise: enterpriseParam } = Route.useSearch();
+  const [tab, setTab] = useState<Tab>(
+    VALID_TABS.includes(tabParam as Tab) ? (tabParam as Tab) : "overview"
+  );
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user, logout, isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { subscription: subParam } = Route.useSearch();
   const toastShown = useRef(false);
 
-  // Handle Stripe redirect-back toasts
+  // Fetch employer profile so the topbar avatar can show the uploaded logo
+  const { data: employerProfile } = useQuery<{ logo_url?: string | null; company_name?: string }>({
+    queryKey: ["employer-profile"],
+    queryFn: async () => {
+      const r = await api.get("/api/profile/employer/");
+      return r.data?.data ?? r.data ?? {};
+    },
+    enabled: isAuthenticated,
+    staleTime: 60_000,
+  });
+  const employerLogo = employerProfile?.logo_url ?? null;
+  const displayName = employerProfile?.company_name ?? user?.company_name ?? user?.first_name ?? "Employer";
+
+  // Switch tab when URL ?tab= param changes (e.g. from notification click)
+  useEffect(() => {
+    if (tabParam && VALID_TABS.includes(tabParam as Tab)) {
+      setTab(tabParam as Tab);
+      navigate({ to: "/dashboard/employer", replace: true } as never);
+    }
+  }, [tabParam]);
+
+  // Handle Stripe redirect-back — sync subscription directly from Stripe, no webhook needed
   useEffect(() => {
     if (!subParam || toastShown.current) return;
     toastShown.current = true;
     if (subParam === "success") {
-      toast.success("🎉 Welcome to Professional Plan! Your subscription is now active.");
-      qc.invalidateQueries({ queryKey: ["my-subscription"] });
-    } else if (subParam === "cancelled") {
-      toast.error("Subscription checkout cancelled. You can try again anytime.");
+      api.post("/api/subscriptions/sync/", { session_id: sessionId ?? "" })
+        .then(() => qc.invalidateQueries({ queryKey: ["my-subscription"] }))
+        .catch(() => qc.invalidateQueries({ queryKey: ["my-subscription"] }))
+        .finally(() => {
+          toast.success("🎉 Welcome to Professional Plan! Your subscription is now active.");
+          navigate({ to: "/dashboard/employer", replace: true } as never);
+        });
+    } else {
+      if (subParam === "cancelled") {
+        toast.error("Subscription checkout cancelled. You can try again anytime.");
+      }
+      navigate({ to: "/dashboard/employer", replace: true } as never);
     }
-    navigate({ to: "/dashboard/employer", replace: true } as never);
   }, [subParam, navigate, qc]);
+
+  // Handle custom plan payment redirect — ?enterprise=paid&session_id=cs_xxx (or without session_id for old links)
+  useEffect(() => {
+    if (!enterpriseParam || toastShown.current) return;
+    toastShown.current = true;
+    if (enterpriseParam === "paid") {
+      const syncPromise = sessionId
+        ? api.post("/api/subscriptions/sync/", { session_id: sessionId })
+        : api.post("/api/subscriptions/custom-plan/sync/");
+      syncPromise
+        .then(() => {
+          qc.invalidateQueries({ queryKey: ["my-subscription"] });
+          qc.invalidateQueries({ queryKey: ["my-enterprise-request"] });
+          toast.success("🎉 Enterprise plan activated! Welcome to your custom plan.");
+        })
+        .catch(() => {
+          qc.invalidateQueries({ queryKey: ["my-subscription"] });
+          toast("Payment received — activating your plan...", { icon: "⏳" });
+        })
+        .finally(() => navigate({ to: "/dashboard/employer", replace: true } as never));
+    } else {
+      navigate({ to: "/dashboard/employer", replace: true } as never);
+    }
+  }, [enterpriseParam, sessionId, navigate, qc]);
 
   // Fetch subscription
   const { data: subscription } = useQuery<UserSubscription | null>({
@@ -343,12 +419,20 @@ function EmployerDashboard() {
               <Home className="h-4 w-4" />
             </Link>
             <NotificationBell role="employer" />
-            <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary/50 px-3 py-1.5">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                {(user?.company_name ?? user?.first_name ?? "E")[0].toUpperCase()}
+            <button
+              type="button"
+              onClick={() => setTab("profile")}
+              title="Edit profile"
+              className="flex items-center gap-2 rounded-xl border border-border bg-secondary/50 px-3 py-1.5 transition hover:bg-secondary"
+            >
+              <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                {employerLogo
+                  ? <img src={employerLogo} alt={displayName} className="h-full w-full object-cover" />
+                  : (displayName[0] ?? "E").toUpperCase()
+                }
               </div>
-              <span className="text-xs font-semibold text-foreground hidden sm:block">{user?.company_name ?? user?.first_name ?? "Employer"}</span>
-            </div>
+              <span className="text-xs font-semibold text-foreground hidden sm:block">{displayName}</span>
+            </button>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-5 lg:p-7">
@@ -368,6 +452,23 @@ function EmployerDashboard() {
 
 function Overview({ onNavigate, subscription, enterpriseRequest }: { onNavigate: (tab: Tab) => void; subscription: UserSubscription | null; enterpriseRequest: EnterpriseRequest | null }) {
   const user = useAuthStore((s) => s.user);
+  const qc = useQueryClient();
+  const [cancellingCustom, setCancellingCustom] = useState(false);
+
+  async function handleCancelCustomPlan() {
+    if (!window.confirm("Cancel your custom plan order? This will revoke the approved plan and payment link.")) return;
+    setCancellingCustom(true);
+    try {
+      await api.post("/api/subscriptions/custom-plan/cancel/");
+      toast.success("Custom plan order cancelled.");
+      qc.invalidateQueries({ queryKey: ["my-subscription"] });
+      qc.invalidateQueries({ queryKey: ["my-enterprise-request"] });
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setCancellingCustom(false);
+    }
+  }
 
   const { data: jobs, isLoading: jobsLoading } = useQuery<EmpJob[]>({
     queryKey: ["my-jobs"],
@@ -549,6 +650,31 @@ function Overview({ onNavigate, subscription, enterpriseRequest }: { onNavigate:
                     style={{ background: "oklch(1 0 0 / 0.08)", color: "oklch(0.985 0.004 250 / 0.70)", border: "1px solid oklch(1 0 0 / 0.15)" }}
                   >
                     Manage Plan
+                  </button>
+                </>
+              )}
+
+              {/* Custom plan payment pending — show Pay Now + Cancel regardless of current plan */}
+              {subscription.custom_payment_status === "pending_payment" && subscription.custom_payment_link && (
+                <>
+                  <div className="hidden sm:block w-px h-6 shrink-0" style={{ background: "oklch(1 0 0 / 0.12)" }} />
+                  <a
+                    href={subscription.custom_payment_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all hover:scale-[1.03]"
+                    style={{ background: "oklch(0.54 0.24 293 / 0.20)", color: "oklch(0.54 0.24 293)", border: "1px solid oklch(0.54 0.24 293 / 0.35)" }}
+                  >
+                    <Zap className="h-3 w-3" />
+                    Pay for Custom Plan
+                  </a>
+                  <button
+                    onClick={handleCancelCustomPlan}
+                    disabled={cancellingCustom}
+                    className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-all hover:scale-[1.03] disabled:opacity-50"
+                    style={{ color: "oklch(0.985 0.004 250 / 0.45)", border: "1px solid oklch(1 0 0 / 0.12)" }}
+                  >
+                    {cancellingCustom ? "Cancelling…" : "Cancel Order"}
                   </button>
                 </>
               )}
@@ -880,12 +1006,15 @@ function JobExpandedDetail({ job, convRate, onNavigate }: {
   });
 
   const STATUS_COLOR: Record<string, string> = {
-    pending: "bg-amber-100 text-amber-700",
-    reviewed: "bg-blue-100 text-blue-700",
-    shortlisted: "bg-violet-100 text-violet-700",
-    interview: "bg-indigo-100 text-indigo-700",
-    offered: "bg-emerald-100 text-emerald-700",
-    rejected: "bg-rose-100 text-rose-700",
+    pending:       "bg-amber-100 text-amber-700",
+    reviewed:      "bg-blue-100 text-blue-700",
+    shortlisted:   "bg-violet-100 text-violet-700",
+    interview:     "bg-indigo-100 text-indigo-700",
+    offered:       "bg-amber-100 text-amber-700",
+    accepted:      "bg-emerald-100 text-emerald-800",
+    offer_declined:"bg-slate-100 text-slate-700",
+    rejected:      "bg-rose-100 text-rose-700",
+    withdrawn:     "bg-slate-100 text-slate-500",
   };
 
   return (
@@ -1750,6 +1879,7 @@ function Applications() {
   const [filterJob, setFilterJob] = useState("");
   const [filterSpecialty, setFilterSpecialty] = useState("");
   const [drawerApp, setDrawerApp] = useState<ReceivedApp | null>(null);
+  const [emailModalApp, setEmailModalApp] = useState<ReceivedApp | null>(null);
 
   const params = useMemo(() => {
     const p: Record<string, string> = {};
@@ -1819,18 +1949,21 @@ function Applications() {
   ];
 
   return (
+    <>
     <div className="space-y-4">
 
       {/* ── Pipeline summary ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         {[
-          { value: "pending",     label: "New",         bg: "bg-amber-50",   color: "text-amber-700",   icon: Clock        },
-          { value: "reviewed",    label: "Reviewed",    bg: "bg-blue-50",    color: "text-blue-700",    icon: Eye          },
-          { value: "shortlisted", label: "Shortlisted", bg: "bg-violet-50",  color: "text-violet-700",  icon: Star         },
-          { value: "interview",   label: "Interview",   bg: "bg-indigo-50",  color: "text-indigo-700",  icon: Calendar     },
-          { value: "offered",     label: "Offered",     bg: "bg-emerald-50", color: "text-emerald-700", icon: Award        },
-          { value: "rejected",    label: "Rejected",    bg: "bg-rose-50",    color: "text-rose-600",    icon: XCircle      },
-          { value: "withdrawn",   label: "Withdrawn",   bg: "bg-slate-100",  color: "text-slate-500",   icon: AlertCircle  },
+          { value: "pending",        label: "New",           bg: "bg-amber-50",   color: "text-amber-700",   icon: Clock        },
+          { value: "reviewed",       label: "Reviewed",      bg: "bg-blue-50",    color: "text-blue-700",    icon: Eye          },
+          { value: "shortlisted",    label: "Shortlisted",   bg: "bg-violet-50",  color: "text-violet-700",  icon: Star         },
+          { value: "interview",      label: "Interview",     bg: "bg-indigo-50",  color: "text-indigo-700",  icon: Calendar     },
+          { value: "offered",        label: "Offered",       bg: "bg-amber-50",   color: "text-amber-700",   icon: Award        },
+          { value: "accepted",       label: "Hired",         bg: "bg-emerald-50", color: "text-emerald-700", icon: CheckCircle2 },
+          { value: "offer_declined", label: "Offer Declined",bg: "bg-slate-50",   color: "text-slate-600",   icon: XCircle      },
+          { value: "rejected",       label: "Rejected",      bg: "bg-rose-50",    color: "text-rose-600",    icon: XCircle      },
+          { value: "withdrawn",      label: "Withdrawn",     bg: "bg-slate-100",  color: "text-slate-500",   icon: AlertCircle  },
         ].map(s => {
           const Icon = s.icon;
           const count = countsByStatus[s.value] ?? 0;
@@ -1977,10 +2110,14 @@ function Applications() {
                     <select
                       value={a.status ?? "pending"}
                       onChange={e => updateStatus.mutate({ id: a.id, status: e.target.value })}
-                      disabled={updateStatus.isPending && updateStatus.variables?.id === a.id}
-                      className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-accent/20"
+                      disabled={(updateStatus.isPending && updateStatus.variables?.id === a.id) || PHYSICIAN_DECIDED.includes(a.status ?? "")}
+                      title={PHYSICIAN_DECIDED.includes(a.status ?? "") ? "Status set by physician" : undefined}
+                      className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {APP_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      {EMPLOYER_SETTABLE_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      {PHYSICIAN_DECIDED.includes(a.status ?? "") && (
+                        <option value={a.status ?? ""}>{APP_STATUSES.find(s => s.value === a.status)?.label ?? a.status}</option>
+                      )}
                     </select>
                   </div>
 
@@ -2019,14 +2156,21 @@ function Applications() {
               {/* Status control */}
               <div className="flex items-center gap-3 rounded-xl border border-border bg-secondary/30 px-4 py-3">
                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex-1">Application Status</p>
-                <select
-                  value={drawerApp.status ?? "pending"}
-                  onChange={e => updateStatus.mutate({ id: drawerApp.id, status: e.target.value })}
-                  disabled={updateStatus.isPending}
-                  className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-accent/20"
-                >
-                  {APP_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
+                {PHYSICIAN_DECIDED.includes(drawerApp.status ?? "") ? (
+                  <span className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-semibold text-muted-foreground">
+                    {APP_STATUSES.find(s => s.value === drawerApp.status)?.label ?? drawerApp.status}
+                    <span className="ml-1.5 text-[10px] font-normal opacity-60">(physician decision)</span>
+                  </span>
+                ) : (
+                  <select
+                    value={drawerApp.status ?? "pending"}
+                    onChange={e => updateStatus.mutate({ id: drawerApp.id, status: e.target.value })}
+                    disabled={updateStatus.isPending}
+                    className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-accent/20"
+                  >
+                    {EMPLOYER_SETTABLE_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                )}
               </div>
 
               {/* Job posting */}
@@ -2107,18 +2251,98 @@ function Applications() {
                   <Download className="h-4 w-4" /> Download CV
                 </a>
               )}
-              {drawerApp.physician_email && (
-                <a
-                  href={`mailto:${drawerApp.physician_email}`}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-secondary py-2.5 text-sm font-semibold text-foreground hover:bg-secondary/80 transition"
-                >
-                  <ExternalLink className="h-4 w-4" /> Email Applicant
-                </a>
-              )}
+              <button
+                onClick={() => setEmailModalApp(drawerApp)}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-secondary py-2.5 text-sm font-semibold text-foreground hover:bg-secondary/80 transition"
+              >
+                <ExternalLink className="h-4 w-4" /> Email Applicant
+              </button>
             </div>
           </div>
         </>
       )}
+    </div>
+
+    {emailModalApp && (
+      <SendEmailModal
+        app={emailModalApp}
+        onClose={() => setEmailModalApp(null)}
+      />
+    )}
+    </>
+  );
+}
+
+function SendEmailModal({ app, onClose }: { app: ReceivedApp; onClose: () => void }) {
+  const [subject, setSubject] = useState(`Regarding your application — ${app.job_title}`);
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+
+  async function handleSend() {
+    if (!subject.trim() || !message.trim()) { toast.error("Subject and message are required."); return; }
+    setSending(true);
+    try {
+      await api.post(`/api/jobs/applications/${app.id}/send-email/`, { subject, message });
+      toast.success("Email sent to applicant.");
+      onClose();
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl bg-card shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <div>
+            <h3 className="font-bold text-primary">Email Applicant</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">To: {app.physician_name} · {app.job_title}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-secondary transition">
+            <X className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="space-y-4 p-6">
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground">Subject</label>
+            <input
+              value={subject}
+              onChange={e => setSubject(e.target.value)}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground">Message</label>
+            <textarea
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              rows={6}
+              placeholder="Write your message to the applicant…"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 resize-none transition"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 border-t border-border px-6 py-4">
+          <button onClick={onClose} className="flex-1 rounded-xl border border-border py-2.5 text-sm font-semibold text-muted-foreground hover:bg-secondary transition">
+            Cancel
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={sending || !subject.trim() || !message.trim()}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-accent py-2.5 text-sm font-bold text-white hover:bg-accent/90 transition disabled:opacity-60"
+          >
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+            Send Email
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2235,6 +2459,23 @@ function SubscriptionCard({ subscription, enterpriseRequest, onUpgrade }: { subs
   const [checkingOut, setCheckingOut] = useState(false);
   const [cancelModal, setCancelModal] = useState(false);
   const [reactivateModal, setReactivateModal] = useState(false);
+  const [cancellingCustom, setCancellingCustom] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  async function handleCancelCustomPlan() {
+    if (!window.confirm("Cancel your custom plan order? The approved payment link will be revoked and you'll stay on your current plan.")) return;
+    setCancellingCustom(true);
+    try {
+      await api.post("/api/subscriptions/custom-plan/cancel/");
+      toast.success("Custom plan order cancelled.");
+      qc.invalidateQueries({ queryKey: ["my-subscription"] });
+      qc.invalidateQueries({ queryKey: ["my-enterprise-request"] });
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setCancellingCustom(false);
+    }
+  }
 
   // Defined early so it can be used in both the fallback and normal render path
   async function handleUpgradeCheckout() {
@@ -2341,15 +2582,45 @@ function SubscriptionCard({ subscription, enterpriseRequest, onUpgrade }: { subs
               </p>
             </div>
           </div>
-          <a
-            href={subscription.custom_payment_link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700 transition"
-          >
-            <Zap className="h-3.5 w-3.5" />
-            Pay Now — ${subscription.custom_price_monthly}/mo
-          </a>
+          <div className="flex items-center gap-2 flex-wrap">
+            <a
+              href={subscription.custom_payment_link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700 transition"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              Pay Now — ${subscription.custom_price_monthly}/mo
+            </a>
+            <button
+              onClick={async () => {
+                setSyncing(true);
+                try {
+                  await api.post("/api/subscriptions/custom-plan/sync/");
+                  qc.invalidateQueries({ queryKey: ["my-subscription"] });
+                  qc.invalidateQueries({ queryKey: ["my-enterprise-request"] });
+                  toast.success("🎉 Enterprise plan activated!");
+                } catch {
+                  toast.error("Payment not found yet — complete payment first, then try again.");
+                } finally {
+                  setSyncing(false);
+                }
+              }}
+              disabled={syncing}
+              className="inline-flex items-center gap-1 rounded-xl bg-violet-100 border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-700 hover:bg-violet-200 transition disabled:opacity-50"
+            >
+              {syncing ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              {syncing ? "Checking…" : "I've Paid — Activate"}
+            </button>
+            <button
+              onClick={handleCancelCustomPlan}
+              disabled={cancellingCustom}
+              className="inline-flex items-center gap-1 rounded-xl border border-violet-200 px-3 py-2 text-xs font-semibold text-violet-600 hover:bg-violet-100 transition disabled:opacity-50"
+            >
+              {cancellingCustom ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              {cancellingCustom ? "Cancelling…" : "Cancel Order"}
+            </button>
+          </div>
         </div>
         <div className="mt-3 rounded-xl border border-violet-200 bg-violet-100/50 p-3">
           <p className="text-xs text-violet-700">
@@ -2519,58 +2790,24 @@ function SubscriptionCard({ subscription, enterpriseRequest, onUpgrade }: { subs
 
 function EnterpriseRequestStatusCard({ request, onUpgrade }: { request: EnterpriseRequest; onUpgrade: () => void }) {
   const navigate = useNavigate();
+  const isRevoked = request.status === "revoked";
+  const isRejected = request.status === "rejected";
 
-  if (request.status === "pending") {
-    return (
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100">
-            <Clock className="h-5 w-5 text-amber-600" />
-          </div>
-          <div>
-            <p className="font-bold text-amber-900">Enterprise Request — Pending</p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              Submitted {request.created_at ? new Date(request.created_at).toLocaleDateString("en-CA", { month: "long", day: "numeric", year: "numeric" }) : "recently"}
-            </p>
-          </div>
-        </div>
-        <p className="mt-3 text-sm text-amber-800">
-          Your enterprise plan request is being reviewed by our team. We'll contact you within 24–48 hours.
-        </p>
-      </div>
-    );
-  }
-
-  if (request.status === "reviewing") {
-    return (
-      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100">
-            <Search className="h-5 w-5 text-blue-600" />
-          </div>
-          <div>
-            <p className="font-bold text-blue-900">Enterprise Request — Under Review</p>
-          </div>
-        </div>
-        <p className="mt-3 text-sm text-blue-800">
-          Our team is reviewing your request. Expect a call or email soon.
-        </p>
-      </div>
-    );
-  }
-
-  if (request.status === "rejected") {
+  if (isRejected) {
     return (
       <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 mb-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100">
             <XCircle className="h-5 w-5 text-rose-600" />
           </div>
           <div>
             <p className="font-bold text-rose-900">Enterprise Request — Not Approved</p>
+            <p className="text-xs text-rose-600 mt-0.5">
+              Submitted {request.created_at ? new Date(request.created_at).toLocaleDateString("en-CA", { month: "long", day: "numeric", year: "numeric" }) : "recently"}
+            </p>
           </div>
         </div>
-        <p className="mt-3 text-sm text-rose-800">
+        <p className="text-sm text-rose-800">
           Unfortunately we couldn't approve your enterprise request at this time.
           {request.rejected_reason && <span className="block mt-1 italic">"{request.rejected_reason}"</span>}
         </p>
@@ -2588,13 +2825,186 @@ function EnterpriseRequestStatusCard({ request, onUpgrade }: { request: Enterpri
     );
   }
 
-  return null;
+  if (isRevoked) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 shadow-sm">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100">
+            <XCircle className="h-5 w-5 text-gray-500" />
+          </div>
+          <div>
+            <p className="font-bold text-gray-700">Custom Plan Order — Cancelled</p>
+            <p className="text-xs text-gray-500 mt-0.5">Your order was cancelled</p>
+          </div>
+        </div>
+        <p className="text-sm text-gray-600">
+          Your custom plan order has been cancelled. You can submit a new enterprise request if needed.
+        </p>
+        <div className="mt-4">
+          <button onClick={onUpgrade}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700 transition">
+            <Zap className="h-3.5 w-3.5" /> Request Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Timeline states
+  const submitted = true;
+  const underReview = request.status === "reviewing" || request.status === "approved";
+  const paymentSent = request.status === "approved" &&
+    (request.custom_payment_status === "pending_payment" || request.custom_payment_status === "paid");
+  const paymentComplete = request.custom_payment_status === "paid";
+  const planActive = request.custom_payment_status === "paid";
+
+  type StepState = "complete" | "active" | "upcoming";
+
+  const steps: { label: string; description: string; state: StepState }[] = [
+    {
+      label: "Request Submitted",
+      description: request.created_at
+        ? new Date(request.created_at).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })
+        : "Awaiting confirmation",
+      state: submitted ? "complete" : "upcoming",
+    },
+    {
+      label: "Under Review",
+      description: underReview ? "Our team is reviewing your request" : "Pending team review",
+      state: underReview ? (request.status === "approved" ? "complete" : "active") : "upcoming",
+    },
+    {
+      label: "Payment Link Sent",
+      description: paymentSent
+        ? request.custom_payment_link
+          ? "Payment link ready — check your email"
+          : "Payment link delivered to your email"
+        : "We'll send a payment link once approved",
+      state: paymentSent ? (paymentComplete ? "complete" : "active") : "upcoming",
+    },
+    {
+      label: "Payment Complete",
+      description: paymentComplete ? "Payment received — thank you!" : "Complete payment to activate plan",
+      state: paymentComplete ? "complete" : paymentSent ? "upcoming" : "upcoming",
+    },
+    {
+      label: "Plan Active",
+      description: planActive ? "Your custom enterprise plan is live" : "Plan will activate after payment",
+      state: planActive ? "complete" : "upcoming",
+    },
+  ];
+
+  const stepColors = {
+    complete: { dot: "bg-violet-600", line: "bg-violet-500", label: "text-gray-900", desc: "text-gray-500" },
+    active: { dot: "bg-violet-400 ring-4 ring-violet-100 animate-pulse", line: "bg-gray-200", label: "text-violet-700 font-semibold", desc: "text-violet-600" },
+    upcoming: { dot: "bg-gray-200", line: "bg-gray-200", label: "text-gray-400", desc: "text-gray-400" },
+  };
+
+  return (
+    <div className="rounded-2xl border border-violet-100 bg-white p-5 shadow-sm">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-5">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100">
+          <Star className="h-5 w-5 text-violet-600" />
+        </div>
+        <div>
+          <p className="font-bold text-gray-900">Enterprise Plan Request</p>
+          <p className="text-xs text-gray-500 mt-0.5">{request.organization_name}</p>
+        </div>
+        {request.status === "approved" && request.custom_payment_status === "pending_payment" && (
+          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+            <Clock className="h-3 w-3" /> Awaiting Payment
+          </span>
+        )}
+        {planActive && (
+          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+            <CheckCircle2 className="h-3 w-3" /> Active
+          </span>
+        )}
+      </div>
+
+      {/* Timeline */}
+      <div className="relative">
+        {steps.map((step, i) => {
+          const colors = stepColors[step.state];
+          const isLast = i === steps.length - 1;
+          return (
+            <div key={step.label} className="flex gap-3">
+              {/* Dot + connector */}
+              <div className="flex flex-col items-center">
+                <div className={`h-3 w-3 rounded-full flex-shrink-0 mt-0.5 transition-all duration-300 ${colors.dot}`} />
+                {!isLast && (
+                  <div className={`w-0.5 flex-1 mt-1 mb-1 min-h-[20px] transition-all duration-300 ${
+                    steps[i + 1].state !== "upcoming" || step.state === "complete" ? "bg-violet-400" : "bg-gray-200"
+                  }`} />
+                )}
+              </div>
+              {/* Content */}
+              <div className={`pb-4 ${isLast ? "pb-0" : ""}`}>
+                <p className={`text-sm font-medium leading-tight ${colors.label}`}>{step.label}</p>
+                <p className={`text-xs mt-0.5 ${colors.desc}`}>{step.description}</p>
+                {/* Pay now CTA */}
+                {step.label === "Payment Complete" && step.state === "upcoming" && paymentSent && request.custom_payment_link && (
+                  <a
+                    href={request.custom_payment_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-700 transition"
+                  >
+                    <CreditCard className="h-3.5 w-3.5" /> Pay Now
+                  </a>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Plan details if approved */}
+      {request.status === "approved" && (request.custom_job_limit || request.custom_price_monthly) && (
+        <div className="mt-4 rounded-xl bg-violet-50 border border-violet-100 p-3">
+          <p className="text-xs font-semibold text-violet-800 mb-1.5">Your Custom Plan Details</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-violet-700">
+            {request.custom_job_limit && <span>Job Posts: <b>{request.custom_job_limit}</b></span>}
+            {request.custom_price_monthly && <span>Price: <b>${request.custom_price_monthly}/mo</b></span>}
+            {request.custom_features && request.custom_features.length > 0 && (
+              <span className="col-span-2">Features: {request.custom_features.join(", ")}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Admin notes */}
+      {request.admin_notes && (
+        <div className="mt-3 rounded-xl bg-blue-50 border border-blue-100 p-3">
+          <p className="text-xs font-semibold text-blue-800 mb-0.5">Note from our team</p>
+          <p className="text-xs text-blue-700">{request.admin_notes}</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Upgrade Modal ────────────────────────────────────────────────────────────
 
 function UpgradeModal({ onClose, isPro = false }: { onClose: () => void; isPro?: boolean }) {
+  const user = useAuthStore((s) => s.user);
+  const qc = useQueryClient();
   const [loading, setLoading] = useState(false);
+
+  // Enterprise request form state
+  const [orgName, setOrgName] = useState(String((user as Record<string,string>)?.company_name ?? ""));
+  const [contactName, setContactName] = useState(String(user?.full_name ?? ""));
+  const [contactEmail, setContactEmail] = useState(String(user?.email ?? ""));
+  const [contactPhone, setContactPhone] = useState("");
+  const [numJobPosts, setNumJobPosts] = useState("");
+  const [featuredJobs, setFeaturedJobs] = useState("");
+  const [hiringDuration, setHiringDuration] = useState("3_months");
+  const [additionalServices, setAdditionalServices] = useState("");
+  const [budgetRange, setBudgetRange] = useState("");
+  const [monthlyVolume, setMonthlyVolume] = useState("");
+  const [notes, setNotes] = useState("");
+  const [submitted, setSubmitted] = useState(false);
 
   const PRO_FEATURES = [
     "5 active job postings",
@@ -2603,15 +3013,6 @@ function UpgradeModal({ onClose, isPro = false }: { onClose: () => void; isPro?:
     "Dedicated account manager",
     "Priority listing in search results",
     "Advanced analytics dashboard",
-  ];
-
-  const ENTERPRISE_FEATURES = [
-    "Custom job posting limits",
-    "Dedicated account manager",
-    "Bulk hiring & volume discounts",
-    "Priority candidate matching",
-    "Custom contract & billing",
-    "SLA-backed support",
   ];
 
   async function handleUpgrade() {
@@ -2633,96 +3034,218 @@ function UpgradeModal({ onClose, isPro = false }: { onClose: () => void; isPro?:
   }
 
   async function handleEnterpriseRequest() {
+    if (!orgName.trim() || !contactName.trim() || !contactEmail.trim()) {
+      toast.error("Please fill in organization name, contact name, and email.");
+      return;
+    }
     setLoading(true);
     try {
       await api.post("/api/subscriptions/enterprise/request/", {
-        organization_name: "",
-        contact_name: "",
-        contact_email: "",
-        monthly_hiring_volume: "6_10",
-        message: "Interested in Enterprise plan — reached Professional job limit.",
+        organization_name: orgName.trim(),
+        contact_name: contactName.trim(),
+        contact_email: contactEmail.trim(),
+        contact_phone: contactPhone.trim(),
+        monthly_hiring_volume: monthlyVolume,
+        num_job_posts: numJobPosts ? parseInt(numJobPosts) : null,
+        featured_jobs: featuredJobs ? parseInt(featuredJobs) : null,
+        hiring_duration: hiringDuration,
+        additional_services: additionalServices.trim(),
+        budget_range: budgetRange.trim(),
+        message: notes.trim(),
       });
-      toast.success("Enterprise inquiry submitted. Our team will contact you shortly.");
-      onClose();
-    } catch {
-      onClose();
+      qc.invalidateQueries({ queryKey: ["my-enterprise-request"] });
+      setSubmitted(true);
+    } catch (err) {
+      toast.error(apiError(err));
     } finally {
       setLoading(false);
     }
   }
 
+  if (isPro) {
+    if (submitted) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl p-8 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 mx-auto">
+              <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+            </div>
+            <h2 className="mt-4 text-xl font-bold text-primary">Request Submitted!</h2>
+            <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+              Our team will review your requirements and send a custom payment link to your email and dashboard notifications within 24–48 hours.
+            </p>
+            <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-left space-y-1.5">
+              <p className="text-xs font-bold text-emerald-800 uppercase tracking-wide">What happens next</p>
+              <p className="text-xs text-emerald-700">1. Our team reviews your requirements</p>
+              <p className="text-xs text-emerald-700">2. We create a custom payment link for your plan</p>
+              <p className="text-xs text-emerald-700">3. You receive the link via email + dashboard notification</p>
+              <p className="text-xs text-emerald-700">4. Complete payment → plan activates immediately</p>
+            </div>
+            <button onClick={onClose} className="mt-6 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-bold text-white hover:brightness-110 transition">
+              Got it, thanks!
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+        <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl">
+          <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-lg p-1.5 text-muted-foreground hover:bg-secondary transition">
+            <X className="h-4 w-4" />
+          </button>
+
+          <div className="p-6 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100">
+                <Briefcase className="h-5 w-5 text-violet-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-primary">Request Custom Enterprise Plan</h2>
+                <p className="text-xs text-muted-foreground">Tell us your requirements — we'll build a plan just for you</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 max-h-[65vh] overflow-y-auto space-y-4">
+            {/* Organization */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-xs font-semibold text-foreground mb-1">Organization Name <span className="text-rose-500">*</span></label>
+                <input value={orgName} onChange={e => setOrgName(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  placeholder="e.g. Toronto General Hospital" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Contact Name <span className="text-rose-500">*</span></label>
+                <input value={contactName} onChange={e => setContactName(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  placeholder="Your full name" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Phone</label>
+                <input value={contactPhone} onChange={e => setContactPhone(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  placeholder="+1 (416) 000-0000" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-semibold text-foreground mb-1">Contact Email <span className="text-rose-500">*</span></label>
+                <input value={contactEmail} onChange={e => setContactEmail(e.target.value)} type="email"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  placeholder="you@organization.com" />
+              </div>
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">Hiring Requirements</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Job Posts Needed</label>
+                  <input value={numJobPosts} onChange={e => setNumJobPosts(e.target.value)} type="number" min="1"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                    placeholder="e.g. 20" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Featured Job Slots</label>
+                  <input value={featuredJobs} onChange={e => setFeaturedJobs(e.target.value)} type="number" min="0"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                    placeholder="e.g. 5" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Monthly Hiring Volume</label>
+                  <input value={monthlyVolume} onChange={e => setMonthlyVolume(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                    placeholder="e.g. 5–10 physicians/month" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-foreground mb-1">Hiring Duration</label>
+                  <select value={hiringDuration} onChange={e => setHiringDuration(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40">
+                    <option value="1_month">1 month</option>
+                    <option value="3_months">3 months</option>
+                    <option value="6_months">6 months</option>
+                    <option value="12_months">12 months</option>
+                    <option value="ongoing">Ongoing</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-foreground mb-1">Budget Range</label>
+                  <input value={budgetRange} onChange={e => setBudgetRange(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                    placeholder="e.g. $500–1,000/month or flexible" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-foreground mb-1">Additional Services Needed</label>
+                  <textarea value={additionalServices} onChange={e => setAdditionalServices(e.target.value)} rows={2}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 resize-none"
+                    placeholder="e.g. priority placement, dedicated recruiter, bulk discounts..." />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-foreground mb-1">Additional Notes</label>
+                  <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 resize-none"
+                    placeholder="Anything else we should know about your hiring needs..." />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 border-t border-border flex gap-3">
+            <button type="button" onClick={onClose}
+              className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-secondary transition">
+              Cancel
+            </button>
+            <button type="button" onClick={handleEnterpriseRequest} disabled={loading}
+              className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-700 transition disabled:opacity-60">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
+              Submit Request
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl">
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-4 top-4 rounded-lg p-1.5 text-muted-foreground hover:bg-secondary transition"
-        >
+        <button type="button" onClick={onClose}
+          className="absolute right-4 top-4 rounded-lg p-1.5 text-muted-foreground hover:bg-secondary transition">
           <X className="h-4 w-4" />
         </button>
-
         <div className="p-6">
-          <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${isPro ? "bg-amber-100" : "bg-accent/15"}`}>
-            {isPro ? <Briefcase className="h-6 w-6 text-amber-600" /> : <Zap className="h-6 w-6 text-accent" />}
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/15">
+            <Zap className="h-6 w-6 text-accent" />
           </div>
-
-          <h2 className="mt-4 text-xl font-bold text-primary">
-            {isPro ? "All Job Slots Used" : "Upgrade to Professional"}
-          </h2>
+          <h2 className="mt-4 text-xl font-bold text-primary">Upgrade to Professional</h2>
           <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-            {isPro
-              ? "You've reached your Professional plan's 5-job limit. Apply for our Enterprise plan to get custom job posting limits and dedicated support."
-              : "You've reached your free plan job posting limit. Upgrade to post up to 5 jobs and access premium features."}
+            You've reached your free plan job posting limit. Upgrade to post up to 5 jobs and access premium features.
           </p>
-
           <ul className="mt-5 space-y-2.5">
-            {(isPro ? ENTERPRISE_FEATURES : PRO_FEATURES).map((f) => (
+            {PRO_FEATURES.map((f) => (
               <li key={f} className="flex items-center gap-2.5 text-sm text-foreground">
-                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${isPro ? "bg-amber-100 text-amber-600" : "bg-accent/15 text-accent"}`}>
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
                   <CheckCircle2 className="h-3 w-3" />
                 </span>
                 {f}
               </li>
             ))}
           </ul>
-
-          {!isPro && (
-            <div className="mt-6 rounded-xl border border-accent/20 bg-accent/5 p-4 text-center">
-              <p className="text-3xl font-extrabold text-primary">$499<span className="text-base font-normal text-muted-foreground">/month</span></p>
-              <p className="mt-1 text-xs text-muted-foreground">Cancel anytime · no long-term commitment</p>
-            </div>
-          )}
-
+          <div className="mt-6 rounded-xl border border-accent/20 bg-accent/5 p-4 text-center">
+            <p className="text-3xl font-extrabold text-primary">$499<span className="text-base font-normal text-muted-foreground">/month</span></p>
+            <p className="mt-1 text-xs text-muted-foreground">Cancel anytime · no long-term commitment</p>
+          </div>
           <div className="mt-5 flex gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-secondary transition"
-            >
+            <button type="button" onClick={onClose}
+              className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-secondary transition">
               Maybe later
             </button>
-            {isPro ? (
-              <button
-                type="button"
-                onClick={handleEnterpriseRequest}
-                disabled={loading}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-amber-700 transition disabled:opacity-60"
-              >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
-                Apply for Enterprise
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleUpgrade}
-                disabled={loading}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-bold text-primary hover:brightness-110 transition disabled:opacity-60"
-              >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-                Upgrade Now
-              </button>
-            )}
+            <button type="button" onClick={handleUpgrade} disabled={loading}
+              className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-bold text-primary hover:brightness-110 transition disabled:opacity-60">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+              Upgrade Now
+            </button>
           </div>
         </div>
       </div>
@@ -2730,22 +3253,146 @@ function UpgradeModal({ onClose, isPro = false }: { onClose: () => void; isPro?:
   );
 }
 
-function CompanyProfile() {
-  const { data, isLoading } = useQuery({
-    queryKey: ["employer-profile"],
-    queryFn: async () => { const r = await api.get("/api/profile/employer/"); return r.data?.data ?? r.data ?? {}; },
-    retry: 1,
-  });
-  const [form, setForm] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-  const merged = { ...(data ?? {}), ...form };
+interface EmployerProfileData {
+  id?: number;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  company_name?: string;
+  company_type?: string;
+  company_phone?: string;
+  address?: string;
+  city?: string;
+  province?: string;
+  country?: string;
+  zip_code?: string;
+  contact_person_first_name?: string;
+  contact_person_last_name?: string;
+  website?: string;
+  logo_url?: string | null;
+}
 
-  async function save(e: React.FormEvent) {
+const CANADIAN_PROVINCES = [
+  { value: "", label: "Select Province / Territory" },
+  { value: "AB", label: "Alberta" },
+  { value: "BC", label: "British Columbia" },
+  { value: "MB", label: "Manitoba" },
+  { value: "NB", label: "New Brunswick" },
+  { value: "NL", label: "Newfoundland and Labrador" },
+  { value: "NS", label: "Nova Scotia" },
+  { value: "NT", label: "Northwest Territories" },
+  { value: "NU", label: "Nunavut" },
+  { value: "ON", label: "Ontario" },
+  { value: "PE", label: "Prince Edward Island" },
+  { value: "QC", label: "Quebec" },
+  { value: "SK", label: "Saskatchewan" },
+  { value: "YT", label: "Yukon" },
+];
+
+function ProfileSectionHeader({ icon: Icon, title, subtitle }: { icon: React.ComponentType<{ className?: string }>; title: string; subtitle: string }) {
+  return (
+    <div className="flex items-center gap-3 pb-4 border-b border-border">
+      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10">
+        <Icon className="h-4 w-4 text-accent" />
+      </div>
+      <div>
+        <p className="text-sm font-bold text-foreground">{title}</p>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+function CompanyProfile() {
+  const qc = useQueryClient();
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: serverData, isLoading } = useQuery<EmployerProfileData>({
+    queryKey: ["employer-profile"],
+    queryFn: async () => {
+      const r = await api.get("/api/profile/employer/");
+      return r.data?.data ?? r.data ?? {};
+    },
+    staleTime: 60_000,
+  });
+
+  const [form, setForm] = useState<Partial<EmployerProfileData>>({});
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Sync server data into form on first load
+  useEffect(() => {
+    if (serverData && Object.keys(form).length === 0) {
+      setForm({
+        first_name: serverData.first_name ?? "",
+        last_name: serverData.last_name ?? "",
+        phone: serverData.phone ?? "",
+        company_name: serverData.company_name ?? "",
+        company_type: serverData.company_type ?? "",
+        company_phone: serverData.company_phone ?? "",
+        contact_person_first_name: serverData.contact_person_first_name ?? "",
+        contact_person_last_name: serverData.contact_person_last_name ?? "",
+        website: serverData.website ?? "",
+        address: serverData.address ?? "",
+        city: serverData.city ?? "",
+        province: serverData.province ?? "",
+        country: serverData.country ?? "Canada",
+        zip_code: serverData.zip_code ?? "",
+      });
+    }
+  }, [serverData]);
+
+  // Track unsaved changes
+  const isDirty = logoFile != null || Object.keys(form).some(
+    key => (form as Record<string, string>)[key] !== ((serverData as Record<string, string> | undefined)?.[key] ?? "")
+  );
+
+  function set(key: keyof EmployerProfileData, value: string) {
+    setForm(prev => ({ ...prev, [key]: value }));
+    if (errors[key]) setErrors(prev => { const e = { ...prev }; delete e[key]; return e; });
+  }
+
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast.error("Logo must be under 2 MB"); return; }
+    if (!file.type.startsWith("image/")) { toast.error("Please select an image file"); return; }
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+  }
+
+  function validate(): boolean {
+    const errs: Record<string, string> = {};
+    if (!form.company_name?.trim()) errs.company_name = "Company name is required";
+    if (!form.company_type) errs.company_type = "Company type is required";
+    if (form.website && !/^https?:\/\/.+\..+/.test(form.website) && !/^.+\..+/.test(form.website)) {
+      errs.website = "Enter a valid website URL";
+    }
+    if (form.zip_code && !/^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/.test(form.zip_code)) {
+      errs.zip_code = "Enter a valid Canadian postal code (e.g. M5V 3L9)";
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!validate()) return;
     setSaving(true);
     try {
-      await api.put("/api/profile/employer/", merged);
-      toast.success("Profile updated");
+      const payload = new FormData();
+      Object.entries(form).forEach(([k, v]) => { if (v !== undefined && v !== null) payload.append(k, v as string); });
+      if (logoFile) payload.append("logo", logoFile);
+      // Pass undefined so axios computes the multipart boundary itself
+      await api.put("/api/profile/employer/", payload, {
+        headers: { "Content-Type": undefined as unknown as string },
+      });
+      await qc.invalidateQueries({ queryKey: ["employer-profile"] });
+      setLogoFile(null);
+      toast.success("Profile updated successfully");
     } catch (err) {
       toast.error(apiError(err));
     } finally {
@@ -2753,29 +3400,258 @@ function CompanyProfile() {
     }
   }
 
+  const logoSrc = logoPreview ?? serverData?.logo_url ?? null;
+  const initials = [form.first_name, form.last_name].filter(Boolean).map(s => s![0]).join("").toUpperCase() || "?";
+
   if (isLoading) {
     return (
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <div className="space-y-3">{[0, 1, 2].map(i => <div key={i} className="h-10 animate-pulse rounded-lg bg-secondary" />)}</div>
+      <div className="space-y-4">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <div className="space-y-3">
+              <div className="h-5 w-32 animate-pulse rounded-lg bg-secondary" />
+              <div className="grid grid-cols-2 gap-3">
+                {[1, 2, 3, 4].map(j => <div key={j} className="h-10 animate-pulse rounded-lg bg-secondary" />)}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
 
   return (
-    <form onSubmit={save} className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-      <h2 className="text-lg font-bold text-primary">Company Profile</h2>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Company Name"><Input value={merged.company_name ?? ""} onChange={e => setForm({ ...form, company_name: e.target.value })} /></Field>
-        <Field label="Company Type"><Input value={merged.company_type ?? ""} onChange={e => setForm({ ...form, company_type: e.target.value })} /></Field>
-        <Field label="Contact Person"><Input value={merged.contact_person ?? ""} onChange={e => setForm({ ...form, contact_person: e.target.value })} /></Field>
-        <Field label="Email"><Input type="email" value={merged.email ?? ""} onChange={e => setForm({ ...form, email: e.target.value })} /></Field>
-        <Field label="Phone"><Input type="tel" value={merged.phone ?? ""} onChange={e => setForm({ ...form, phone: e.target.value })} /></Field>
-        <Field label="Website"><Input value={merged.website ?? ""} onChange={e => setForm({ ...form, website: e.target.value })} /></Field>
-        <Field label="City"><Input value={merged.city ?? ""} onChange={e => setForm({ ...form, city: e.target.value })} /></Field>
-        <Field label="Province"><Input value={merged.province ?? ""} onChange={e => setForm({ ...form, province: e.target.value })} /></Field>
+    <form onSubmit={handleSubmit} className="space-y-5">
+
+      {/* ── Logo + header card ───────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div className="flex items-center gap-5 flex-wrap">
+          {/* Logo preview */}
+          <div className="relative group shrink-0">
+            <div className="h-20 w-20 rounded-2xl border-2 border-border overflow-hidden bg-secondary flex items-center justify-center">
+              {logoSrc
+                ? <img src={logoSrc} alt="Logo" className="h-full w-full object-cover" />
+                : <span className="text-2xl font-bold text-muted-foreground">{initials}</span>
+              }
+            </div>
+            <button
+              type="button"
+              onClick={() => logoInputRef.current?.click()}
+              className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <Pencil className="h-5 w-5 text-white" />
+            </button>
+            <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-foreground text-lg truncate">{form.company_name || "Your Company"}</p>
+            <p className="text-sm text-muted-foreground">{serverData?.email}</p>
+            <button
+              type="button"
+              onClick={() => logoInputRef.current?.click()}
+              className="mt-2 text-xs font-semibold text-accent hover:underline"
+            >
+              {logoSrc ? "Change logo" : "Upload company logo"} · Max 2 MB
+            </button>
+          </div>
+          {isDirty && (
+            <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700 shrink-0">
+              <AlertTriangle className="h-3.5 w-3.5" /> Unsaved changes
+            </div>
+          )}
+        </div>
       </div>
-      <Field label="Address"><Input value={merged.address ?? ""} onChange={e => setForm({ ...form, address: e.target.value })} /></Field>
-      <SubmitButton loading={saving}>Save Changes</SubmitButton>
+
+      {/* ── Account info ────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+        <ProfileSectionHeader icon={Users} title="Account Information" subtitle="Your personal account details" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">First Name</label>
+            <input
+              value={form.first_name ?? ""}
+              onChange={e => set("first_name", e.target.value)}
+              placeholder="John"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Last Name</label>
+            <input
+              value={form.last_name ?? ""}
+              onChange={e => set("last_name", e.target.value)}
+              placeholder="Smith"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Email Address</label>
+            <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary/50 px-3 py-2.5">
+              <span className="text-sm text-muted-foreground">{serverData?.email}</span>
+              <span className="ml-auto text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide">Read-only</span>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Mobile Phone</label>
+            <input
+              type="tel"
+              value={form.phone ?? ""}
+              onChange={e => set("phone", e.target.value)}
+              placeholder="+1 (416) 555-0100"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Company info ────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+        <ProfileSectionHeader icon={Building2} title="Company Information" subtitle="Details about your organization" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              Company Name <span className="text-rose-500">*</span>
+            </label>
+            <input
+              value={form.company_name ?? ""}
+              onChange={e => set("company_name", e.target.value)}
+              placeholder="Acme Health Corp."
+              className={`w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${errors.company_name ? "border-rose-400 focus:border-rose-400 focus:ring-rose-200" : "border-border focus:border-accent focus:ring-accent/15"}`}
+            />
+            {errors.company_name && <p className="mt-1 text-xs text-rose-500">{errors.company_name}</p>}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              Organization Type <span className="text-rose-500">*</span>
+            </label>
+            <select
+              value={form.company_type ?? ""}
+              onChange={e => set("company_type", e.target.value)}
+              className={`w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${errors.company_type ? "border-rose-400 focus:border-rose-400 focus:ring-rose-200" : "border-border focus:border-accent focus:ring-accent/15"}`}
+            >
+              <option value="">Select type…</option>
+              <option value="employer">Direct Employer (Hospital / Clinic)</option>
+              <option value="recruiter">Recruitment Agency</option>
+            </select>
+            {errors.company_type && <p className="mt-1 text-xs text-rose-500">{errors.company_type}</p>}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Company Phone</label>
+            <input
+              type="tel"
+              value={form.company_phone ?? ""}
+              onChange={e => set("company_phone", e.target.value)}
+              placeholder="+1 (416) 555-0199"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Website</label>
+            <div className="relative">
+              <Globe className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={form.website ?? ""}
+                onChange={e => set("website", e.target.value)}
+                placeholder="https://yourcompany.com"
+                className={`w-full rounded-xl border bg-background py-2.5 pl-9 pr-3 text-sm outline-none transition focus:ring-2 ${errors.website ? "border-rose-400 focus:border-rose-400 focus:ring-rose-200" : "border-border focus:border-accent focus:ring-accent/15"}`}
+              />
+            </div>
+            {errors.website && <p className="mt-1 text-xs text-rose-500">{errors.website}</p>}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Contact Person — First Name</label>
+            <input
+              value={form.contact_person_first_name ?? ""}
+              onChange={e => set("contact_person_first_name", e.target.value)}
+              placeholder="Jane"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Contact Person — Last Name</label>
+            <input
+              value={form.contact_person_last_name ?? ""}
+              onChange={e => set("contact_person_last_name", e.target.value)}
+              placeholder="Doe"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Address ─────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+        <ProfileSectionHeader icon={MapPin} title="Location" subtitle="Your company's mailing address" />
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Street Address</label>
+          <input
+            value={form.address ?? ""}
+            onChange={e => set("address", e.target.value)}
+            placeholder="123 University Ave"
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">City</label>
+            <input
+              value={form.city ?? ""}
+              onChange={e => set("city", e.target.value)}
+              placeholder="Toronto"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Province / Territory</label>
+            <select
+              value={form.province ?? ""}
+              onChange={e => set("province", e.target.value)}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
+            >
+              {CANADIAN_PROVINCES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Postal Code</label>
+            <input
+              value={form.zip_code ?? ""}
+              onChange={e => set("zip_code", e.target.value.toUpperCase())}
+              placeholder="M5V 3L9"
+              maxLength={7}
+              className={`w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${errors.zip_code ? "border-rose-400 focus:border-rose-400 focus:ring-rose-200" : "border-border focus:border-accent focus:ring-accent/15"}`}
+            />
+            {errors.zip_code && <p className="mt-1 text-xs text-rose-500">{errors.zip_code}</p>}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Country</label>
+            <input
+              value={form.country ?? "Canada"}
+              onChange={e => set("country", e.target.value)}
+              placeholder="Canada"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Save bar ────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card px-6 py-4 shadow-sm">
+        <p className="text-xs text-muted-foreground">
+          {isDirty
+            ? <span className="font-semibold text-amber-600">You have unsaved changes</span>
+            : "All changes saved"}
+        </p>
+        <button
+          type="submit"
+          disabled={saving || !isDirty}
+          className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-bold text-white transition hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          {saving ? "Saving…" : "Save Changes"}
+        </button>
+      </div>
+
     </form>
   );
 }
@@ -2798,6 +3674,24 @@ function BillingHistory({ subscription }: { subscription: UserSubscription | nul
   const [reactivating, setReactivating] = useState(false);
   const [cancelModal, setCancelModal] = useState(false);
   const [reactivateModal, setReactivateModal] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
+
+  async function handleUpgradeCheckout() {
+    setCheckingOut(true);
+    try {
+      const plansRes = await api.get("/api/subscriptions/plans/employer/");
+      const plans: ApiPlan[] = plansRes.data?.data ?? plansRes.data ?? [];
+      const pro = plans.find((p) => !p.is_free && !p.is_enterprise && p.stripe_price_id);
+      if (!pro) { toast.error("Professional plan not found."); return; }
+      const r = await api.post("/api/subscriptions/create-checkout/", { plan_id: pro.id });
+      const url = r.data?.data?.checkout_url ?? r.data?.checkout_url;
+      if (url) window.location.href = url;
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setCheckingOut(false);
+    }
+  }
 
   async function handleCancel() {
     setCancelling(true);
@@ -2833,6 +3727,16 @@ function BillingHistory({ subscription }: { subscription: UserSubscription | nul
       const r = await api.get("/api/subscriptions/payments/");
       const d = r.data?.data ?? r.data;
       return Array.isArray(d) ? d : (d?.results ?? []);
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: enterpriseHistory } = useQuery<EnterpriseRequest[]>({
+    queryKey: ["my-enterprise-requests-history"],
+    queryFn: async () => {
+      const r = await api.get("/api/subscriptions/enterprise/my-requests/");
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : [];
     },
     staleTime: 60_000,
   });
@@ -2918,24 +3822,29 @@ function BillingHistory({ subscription }: { subscription: UserSubscription | nul
             <thead>
               <tr>
                 <th>Date</th>
+                <th>Package</th>
                 <th>Description</th>
                 <th>Status</th>
                 <th>Amount</th>
               </tr>
             </thead>
             <tbody>
-              ${(payments ?? []).map((p) => `
+              ${(payments ?? []).map((p) => {
+                const d = (p.description ?? "").toLowerCase();
+                const pkg = d.includes("enterprise") || d.includes("custom") ? "Enterprise Custom" : d.includes("professional") || d.includes("pro") ? "Professional" : "Subscription";
+                return `
                 <tr>
                   <td>${format(new Date(p.created_at), "MMM d, yyyy")}</td>
+                  <td>${pkg}</td>
                   <td>${p.description || "Subscription Payment"}</td>
                   <td><span class="badge ${p.status}">${p.status.charAt(0).toUpperCase() + p.status.slice(1)}</span></td>
                   <td>${p.currency.toUpperCase()} $${parseFloat(p.amount).toFixed(2)}</td>
                 </tr>
-              `).join("")}
+              `}).join("")}
             </tbody>
             <tfoot>
               <tr>
-                <td colspan="3">Total Paid</td>
+                <td colspan="4">Total Paid</td>
                 <td class="green">CAD $${totalPaid.toFixed(2)}</td>
               </tr>
             </tfoot>
@@ -3041,50 +3950,71 @@ function BillingHistory({ subscription }: { subscription: UserSubscription | nul
                   <thead>
                     <tr className="border-b border-border bg-secondary/40">
                       <th className="px-5 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">Date</th>
+                      <th className="px-5 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">Package</th>
                       <th className="px-5 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">Description</th>
                       <th className="px-5 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">Status</th>
                       <th className="px-5 py-3 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {payments.map((p) => (
-                      <tr key={p.id} className="hover:bg-secondary/30 transition">
-                        <td className="px-5 py-3.5 text-sm text-muted-foreground whitespace-nowrap">
-                          {format(new Date(p.created_at), "MMM d, yyyy")}
-                        </td>
-                        <td className="px-5 py-3.5 text-sm font-medium text-foreground">
-                          {p.description || "Subscription Payment"}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                            p.status === "succeeded"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : p.status === "failed"
-                              ? "bg-rose-100 text-rose-700"
-                              : p.status === "refunded"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-amber-100 text-amber-700"
-                          }`}>
-                            {p.status === "succeeded" && <CheckCircle2 className="h-3 w-3" />}
-                            {p.status === "failed" && <XCircle className="h-3 w-3" />}
-                            {p.status.charAt(0).toUpperCase() + p.status.slice(1)}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-right">
-                          <span className={`text-sm font-bold ${
-                            p.status === "succeeded" ? "text-foreground"
-                            : p.status === "refunded" ? "text-blue-600"
-                            : "text-rose-500"
-                          }`}>
-                            {p.currency.toUpperCase()} ${parseFloat(p.amount).toFixed(2)}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {payments.map((p) => {
+                      const desc = (p.description ?? "").toLowerCase();
+                      const isEnterprise = desc.includes("enterprise") || desc.includes("custom") || desc.includes("custom plan");
+                      const isProfessional = desc.includes("professional") || desc.includes("pro");
+                      return (
+                        <tr key={p.id} className="hover:bg-secondary/30 transition">
+                          <td className="px-5 py-3.5 text-sm text-muted-foreground whitespace-nowrap">
+                            {format(new Date(p.created_at), "MMM d, yyyy")}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {isEnterprise ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-0.5 text-[11px] font-bold text-violet-700">
+                                <Star className="h-3 w-3" /> Enterprise Custom
+                              </span>
+                            ) : isProfessional ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-bold text-blue-700">
+                                <Zap className="h-3 w-3" /> Professional
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-600">
+                                Subscription
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 text-sm font-medium text-foreground max-w-[180px] truncate">
+                            {p.description || "Subscription Payment"}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                              p.status === "succeeded"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : p.status === "failed"
+                                ? "bg-rose-100 text-rose-700"
+                                : p.status === "refunded"
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-amber-100 text-amber-700"
+                            }`}>
+                              {p.status === "succeeded" && <CheckCircle2 className="h-3 w-3" />}
+                              {p.status === "failed" && <XCircle className="h-3 w-3" />}
+                              {p.status.charAt(0).toUpperCase() + p.status.slice(1)}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            <span className={`text-sm font-bold ${
+                              p.status === "succeeded" ? "text-foreground"
+                              : p.status === "refunded" ? "text-blue-600"
+                              : "text-rose-500"
+                            }`}>
+                              {p.currency.toUpperCase()} ${parseFloat(p.amount).toFixed(2)}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-border bg-secondary/40">
-                      <td colSpan={3} className="px-5 py-3 text-sm font-bold text-foreground">Total Paid</td>
+                      <td colSpan={4} className="px-5 py-3 text-sm font-bold text-foreground">Total Paid</td>
                       <td className="px-5 py-3 text-right text-sm font-extrabold text-emerald-600">
                         CAD ${totalPaid.toFixed(2)}
                       </td>
@@ -3094,6 +4024,82 @@ function BillingHistory({ subscription }: { subscription: UserSubscription | nul
               </div>
             )}
           </div>
+
+          {/* Enterprise Request History */}
+          {enterpriseHistory && enterpriseHistory.length > 0 && (
+            <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                <h3 className="font-bold text-primary flex items-center gap-2">
+                  <Star className="h-4 w-4 text-violet-500" /> Enterprise Plan History
+                </h3>
+                <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                  {enterpriseHistory.length} request{enterpriseHistory.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <div className="divide-y divide-border">
+                {enterpriseHistory.map((req) => {
+                  const statusConfig: Record<string, { bg: string; text: string; label: string }> = {
+                    pending:   { bg: "bg-amber-100",  text: "text-amber-700",  label: "Pending" },
+                    reviewing: { bg: "bg-blue-100",   text: "text-blue-700",   label: "Under Review" },
+                    approved:  { bg: "bg-violet-100", text: "text-violet-700", label: "Approved" },
+                    rejected:  { bg: "bg-rose-100",   text: "text-rose-700",   label: "Rejected" },
+                    revoked:   { bg: "bg-gray-100",   text: "text-gray-600",   label: "Cancelled" },
+                  };
+                  const sc = statusConfig[req.status] ?? statusConfig.pending;
+                  const isPaid = req.custom_payment_status === "paid";
+                  const isPending = req.custom_payment_status === "pending_payment";
+                  return (
+                    <div key={req.id} className="px-5 py-4 hover:bg-secondary/20 transition">
+                      <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-foreground">{req.organization_name}</p>
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${sc.bg} ${sc.text}`}>
+                              {sc.label}
+                            </span>
+                            {isPaid && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                                <CheckCircle2 className="h-3 w-3" /> Paid & Active
+                              </span>
+                            )}
+                            {isPending && req.custom_payment_link && (
+                              <a href={req.custom_payment_link} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded-full bg-violet-600 px-2.5 py-0.5 text-[11px] font-bold text-white hover:bg-violet-700 transition">
+                                <CreditCard className="h-3 w-3" /> Pay Now
+                              </a>
+                            )}
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span>Submitted {format(new Date(req.created_at), "MMM d, yyyy")}</span>
+                            {req.num_job_posts && <span>· {req.num_job_posts} job posts requested</span>}
+                            {req.budget_range && <span>· Budget: {req.budget_range}</span>}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          {req.custom_price_monthly && parseFloat(req.custom_price_monthly) > 0 ? (
+                            <>
+                              <p className="font-bold text-foreground">${parseFloat(req.custom_price_monthly).toFixed(2)}<span className="text-xs font-normal text-muted-foreground">/mo</span></p>
+                              {req.custom_job_limit && <p className="text-xs text-muted-foreground">{req.custom_job_limit} job posts</p>}
+                            </>
+                          ) : req.status === "approved" ? (
+                            <p className="text-xs text-violet-600 font-semibold">Pricing set</p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">Price TBD</p>
+                          )}
+                        </div>
+                      </div>
+                      {req.status === "rejected" && req.rejected_reason && (
+                        <p className="mt-2 text-xs text-rose-600 italic">Reason: "{req.rejected_reason}"</p>
+                      )}
+                      {req.admin_notes && (
+                        <p className="mt-1.5 text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-1.5">Note: {req.admin_notes}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Current subscription details */}
           {subscription && (() => {
@@ -3107,6 +4113,17 @@ function BillingHistory({ subscription }: { subscription: UserSubscription | nul
                 <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                   <h3 className="font-bold text-primary">Subscription Details</h3>
                   <div className="flex items-center gap-2">
+                    {/* Upgrade button for free users */}
+                    {isFree && (
+                      <button
+                        onClick={handleUpgradeCheckout}
+                        disabled={checkingOut}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-xs font-bold text-white hover:bg-accent/90 transition disabled:opacity-60"
+                      >
+                        {checkingOut ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                        Upgrade to Professional
+                      </button>
+                    )}
                     {/* Cancel at period end notice */}
                     {isCancelledAtEnd && subscription.current_period_end && (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">

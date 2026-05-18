@@ -16,6 +16,16 @@ export const Route = createFileRoute("/admin/enterprise")({
 
 type RequestStatus = "pending" | "reviewing" | "approved" | "rejected" | "revoked";
 
+interface ExistingPlanInfo {
+  job_post_limit: number | null;
+  price_monthly: string;
+  valid_until: string | null;
+  days_remaining: number | null;
+  estimated_unused_value: number | null;
+  payment_status: string;
+  enterprise_request_id: number;
+}
+
 interface EnterpriseRequest {
   id: number;
   organization_name: string;
@@ -24,6 +34,11 @@ interface EnterpriseRequest {
   contact_phone?: string;
   monthly_hiring_volume: string;
   monthly_hiring_volume_display?: string;
+  num_job_posts?: number | null;
+  featured_jobs?: number | null;
+  hiring_duration?: string;
+  additional_services?: string;
+  budget_range?: string;
   message?: string;
   status: RequestStatus;
   custom_job_limit?: number | null;
@@ -37,6 +52,7 @@ interface EnterpriseRequest {
   revoked_at?: string;
   custom_payment_status?: "pending_payment" | "paid" | "free" | "revoked" | null;
   custom_payment_link?: string | null;
+  existing_plan_info?: ExistingPlanInfo | null;
   created_at: string;
 }
 
@@ -82,12 +98,29 @@ function StatusPill({ status }: { status: RequestStatus }) {
 // ─── Approve Modal ────────────────────────────────────────────────────────────
 
 function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest; onClose: () => void; onDone: () => void }) {
+  const ep = request.existing_plan_info;
+  const hasActivePlan = !!ep;
+
+  const fullPrice = request.custom_price_monthly ?? "799.00";
+  const canAutoCalc = !!(ep?.estimated_unused_value && ep.estimated_unused_value > 0);
+
+  // Auto-calculate discounted price when we have unused value info
+  const autoDiscountedPrice = canAutoCalc
+    ? Math.max(0, parseFloat(fullPrice) - ep!.estimated_unused_value!).toFixed(2)
+    : fullPrice;
+
   const [jobLimit, setJobLimit] = useState(String(request.custom_job_limit ?? "20"));
-  const [price, setPrice] = useState(request.custom_price_monthly ?? "799.00");
+  // Pre-fill with auto-discounted price; if no expiry, use full price
+  const [price, setPrice] = useState(autoDiscountedPrice);
+  // Manual discount input (used when expiry not set)
+  const [manualDiscount, setManualDiscount] = useState("");
   const [featuresText, setFeaturesText] = useState(
-    (request.custom_features?.length ? request.custom_features : ["20 Active Job Postings", "Priority support", "Dedicated account manager"]).join("\n")
+    (request.custom_features?.length
+      ? request.custom_features
+      : ["20 Active Job Postings", "Priority support", "Dedicated account manager"]
+    ).join("\n")
   );
-  const [validUntil, setValidUntil] = useState(request.approved_at ? "" : "");
+  const [validUntil, setValidUntil] = useState("");
   const [adminNotes, setAdminNotes] = useState(request.admin_notes ?? "");
   const [loading, setLoading] = useState(false);
 
@@ -101,7 +134,7 @@ function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest
         admin_notes: adminNotes,
         ...(validUntil ? { valid_until: validUntil } : {}),
       });
-      toast.success("Enterprise request approved and custom plan activated.");
+      toast.success("Enterprise request approved — payment link sent to employer.");
       onDone();
     } catch (err) {
       toast.error(apiError(err));
@@ -141,13 +174,13 @@ function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest
   async function handleRevoke() {
     const alreadyPaid = request.custom_payment_status === "paid";
     const confirmMsg = alreadyPaid
-      ? "⚠️ This customer has ALREADY PAID. Revoking will issue a full Stripe refund and downgrade them to the free plan.\n\nAre you sure?"
-      : "Revoke this approval? The payment link will be deactivated and the customer cannot pay.\n\nAre you sure?";
+      ? "⚠️ This customer has ALREADY PAID. Revoking will deactivate their plan.\n\nAre you sure?"
+      : "Revoke this approval? The payment link will be deactivated.\n\nAre you sure?";
     if (!window.confirm(confirmMsg)) return;
     setLoading(true);
     try {
       await api.patch(`/api/subscriptions/admin/enterprise/requests/${request.id}/revoke/`);
-      toast.success(alreadyPaid ? "Approval revoked and refund issued." : "Approval revoked. Payment link deactivated.");
+      toast.success(alreadyPaid ? "Plan revoked." : "Approval revoked. Payment link deactivated.");
       onDone();
     } catch (err) {
       toast.error(apiError(err));
@@ -158,131 +191,264 @@ function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl rounded-2xl border border-border bg-card shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <h2 className="font-bold text-foreground">Enterprise Request — {request.organization_name}</h2>
+      <div className="relative w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
+          <div>
+            <h2 className="font-bold text-foreground">{request.organization_name}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Enterprise Plan Request #{request.id} · {format(new Date(request.created_at), "MMM d, yyyy")}</p>
+          </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary transition"><X className="h-4 w-4" /></button>
         </div>
-        <div className="px-6 py-5 space-y-5">
-          {/* Request details */}
-          <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-2 text-sm">
-            {[
-              { label: "Organization", value: request.organization_name },
-              { label: "Contact", value: request.contact_name },
-              { label: "Email", value: request.contact_email },
-              { label: "Phone", value: request.contact_phone || "—" },
-              { label: "Volume", value: request.monthly_hiring_volume_display || request.monthly_hiring_volume },
-              { label: "Submitted", value: format(new Date(request.created_at), "MMM d, yyyy") },
-            ].map(row => (
-              <div key={row.label} className="flex gap-3">
-                <span className="w-24 shrink-0 font-semibold text-muted-foreground">{row.label}</span>
-                <span className="text-foreground">{row.value}</span>
+
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+
+          {/* ── Existing active plan warning ─────────────────────────────── */}
+          {hasActivePlan && ep && (
+            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-bold text-amber-900 text-sm">Employer Has an Active Paid Plan</p>
+                  <p className="text-xs text-amber-700 mt-0.5">Approving this request will replace the existing plan below. Set the price to account for their unused credit.</p>
+                </div>
               </div>
-            ))}
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  { label: "Current Price", value: `$${parseFloat(ep.price_monthly).toFixed(2)}/mo` },
+                  { label: "Job Post Limit", value: ep.job_post_limit ? String(ep.job_post_limit) : "Unlimited" },
+                  { label: "Expires", value: ep.valid_until ? format(new Date(ep.valid_until), "MMM d, yyyy") : "No expiry" },
+                  { label: "Days Remaining", value: ep.days_remaining != null ? `${ep.days_remaining} days` : "—" },
+                ].map(item => (
+                  <div key={item.label} className="rounded-lg bg-amber-100 px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-600">{item.label}</p>
+                    <p className="text-sm font-bold text-amber-900 mt-0.5">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              {/* Branch 1: we can auto-calculate unused credit */}
+              {canAutoCalc && (
+                <div className="mt-3 rounded-lg bg-white border border-amber-200 px-4 py-3">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-amber-800">Estimated Unused Credit</p>
+                      <p className="text-lg font-extrabold text-amber-700">−${ep!.estimated_unused_value!.toFixed(2)}</p>
+                      <p className="text-[11px] text-amber-600 mt-0.5">
+                        {ep!.days_remaining} days × ${parseFloat(ep!.price_monthly).toFixed(2)}/mo ÷ 30
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1 justify-end">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Discount auto-applied
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        ${parseFloat(fullPrice).toFixed(2)} → <strong>${autoDiscountedPrice}</strong>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setPrice(fullPrice)}
+                        className="mt-1.5 text-[11px] text-amber-600 underline hover:text-amber-800 transition"
+                      >
+                        Reset to full price (${parseFloat(fullPrice).toFixed(2)})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Branch 2: active plan exists but no expiry → manual discount input */}
+              {!canAutoCalc && (
+                <div className="mt-3 rounded-lg bg-white border border-amber-200 px-4 py-3">
+                  <p className="text-xs font-semibold text-amber-800 mb-2">
+                    No expiry set on existing plan — enter a manual discount if applicable
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={manualDiscount}
+                        onChange={e => setManualDiscount(e.target.value)}
+                        placeholder="Discount amount (e.g. 150)"
+                        className="w-full rounded-xl border border-amber-300 bg-amber-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const disc = parseFloat(manualDiscount);
+                        if (!isNaN(disc) && disc >= 0) {
+                          setPrice(Math.max(0, parseFloat(fullPrice) - disc).toFixed(2));
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 transition shrink-0"
+                    >
+                      <DollarSign className="h-3.5 w-3.5" /> Apply
+                    </button>
+                    {parseFloat(price) < parseFloat(fullPrice) && (
+                      <button
+                        type="button"
+                        onClick={() => { setPrice(fullPrice); setManualDiscount(""); }}
+                        className="text-[11px] text-amber-600 underline hover:text-amber-800 transition shrink-0"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                  {parseFloat(price) < parseFloat(fullPrice) && (
+                    <p className="mt-1.5 text-[11px] text-emerald-700 font-semibold">
+                      ✓ ${parseFloat(fullPrice).toFixed(2)} → ${parseFloat(price).toFixed(2)} (−${(parseFloat(fullPrice) - parseFloat(price)).toFixed(2)} discount)
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Request details ──────────────────────────────────────────── */}
+          <div className="rounded-xl border border-border bg-secondary/30 p-4 text-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Request Details</p>
+            <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
+              {[
+                { label: "Organization", value: request.organization_name },
+                { label: "Contact", value: request.contact_name },
+                { label: "Email", value: request.contact_email },
+                { label: "Phone", value: request.contact_phone || "—" },
+                { label: "Job Posts Needed", value: request.num_job_posts ? String(request.num_job_posts) : "—" },
+                { label: "Featured Jobs", value: request.featured_jobs ? String(request.featured_jobs) : "—" },
+                { label: "Hiring Duration", value: request.hiring_duration || "—" },
+                { label: "Monthly Volume", value: request.monthly_hiring_volume || "—" },
+                { label: "Budget Range", value: request.budget_range || "—" },
+              ].map(row => (
+                <div key={row.label} className="flex gap-2">
+                  <span className="w-32 shrink-0 text-xs font-semibold text-muted-foreground">{row.label}</span>
+                  <span className="text-sm text-foreground">{row.value}</span>
+                </div>
+              ))}
+            </div>
+            {request.additional_services && (
+              <div className="mt-2 pt-2 border-t border-border">
+                <p className="text-xs font-semibold text-muted-foreground mb-0.5">Additional Services</p>
+                <p className="text-sm text-foreground">{request.additional_services}</p>
+              </div>
+            )}
             {request.message && (
-              <div className="pt-2 border-t border-border">
-                <p className="font-semibold text-muted-foreground text-xs mb-1">Message</p>
-                <p className="italic text-foreground/80">"{request.message}"</p>
+              <div className="mt-2 pt-2 border-t border-border">
+                <p className="text-xs font-semibold text-muted-foreground mb-0.5">Message</p>
+                <p className="italic text-foreground/80 text-sm">"{request.message}"</p>
               </div>
             )}
           </div>
 
-          {/* Admin settings */}
+          {/* ── Admin custom plan settings ───────────────────────────────── */}
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Admin Custom Settings</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
+              {hasActivePlan ? "New Plan Settings (replaces existing)" : "Custom Plan Settings"}
+            </p>
             <div className="space-y-3">
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Custom Job Post Limit <span className="text-muted-foreground/60">(leave empty for unlimited)</span></label>
-                <div className="relative">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Job Post Limit <span className="text-muted-foreground/50">(empty = unlimited)</span></label>
                   <input type="number" min={1} value={jobLimit} onChange={e => setJobLimit(e.target.value)}
                     placeholder="e.g. 20"
                     className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">jobs/month</span>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+                    Monthly Price
+                    {hasActivePlan && ep?.estimated_unused_value && ep.estimated_unused_value > 0 && (
+                      <span className="ml-1 text-amber-600">(consider discount)</span>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input type="number" min={0} step={0.01} value={price} onChange={e => setPrice(e.target.value)}
+                      placeholder="799.00"
+                      className="w-full rounded-xl border border-border bg-background py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
+                  </div>
                 </div>
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Custom Monthly Price</label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input type="number" min={0} step={0.01} value={price} onChange={e => setPrice(e.target.value)}
-                    placeholder="799.00"
-                    className="w-full rounded-xl border border-border bg-background py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
-                </div>
+                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Valid Until <span className="text-muted-foreground/50">(optional)</span></label>
+                <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Custom Features <span className="text-muted-foreground/60">(one per line)</span></label>
-                <textarea value={featuresText} onChange={e => setFeaturesText(e.target.value)} rows={5} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15 resize-none" />
+                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Custom Features <span className="text-muted-foreground/50">(one per line)</span></label>
+                <textarea value={featuresText} onChange={e => setFeaturesText(e.target.value)} rows={4}
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15 resize-none" />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Valid Until <span className="text-muted-foreground/60">(optional)</span></label>
-                <input type="date" value={validUntil} onChange={e => setValidUntil(e.target.value)} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Internal Notes <span className="text-muted-foreground/60">(not shown to user)</span></label>
-                <textarea value={adminNotes} onChange={e => setAdminNotes(e.target.value)} rows={2} placeholder="e.g. Large health network, negotiated rate..." className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15 resize-none" />
+                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Internal Notes <span className="text-muted-foreground/50">(not shown to employer)</span></label>
+                <textarea value={adminNotes} onChange={e => setAdminNotes(e.target.value)} rows={2}
+                  placeholder="e.g. Large health network, negotiated rate, upgrade from $799 plan..."
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15 resize-none" />
               </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-            {/* ── Revoked state ── */}
+        </div>
+
+        {/* Footer actions */}
+        <div className="border-t border-border px-6 py-4 shrink-0">
+          <div className="flex flex-wrap gap-2">
+            {/* Revoked */}
             {request.status === "revoked" && (
               <span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-600">
                 <RotateCcw className="h-4 w-4" /> Approval Revoked
-                {request.revoked_by_email && (
-                  <span className="text-xs font-normal text-slate-400">by {request.revoked_by_email}</span>
-                )}
+                {request.revoked_by_email && <span className="text-xs font-normal text-slate-400">by {request.revoked_by_email}</span>}
               </span>
             )}
 
-            {/* ── Approved state ── */}
+            {/* Already approved */}
             {request.status === "approved" && (
               <>
-                <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-sm font-semibold text-emerald-700">
+                <span className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold ${
+                  request.custom_payment_status === "paid"
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                    : "bg-blue-50 border-blue-200 text-blue-700"
+                }`}>
                   <CheckCircle2 className="h-4 w-4" />
                   {request.custom_payment_status === "paid" ? "Paid & Active" : "Approved — Awaiting Payment"}
                 </span>
-                {/* Revoke button — not paid yet */}
                 {request.custom_payment_status === "pending_payment" && (
-                  <button
-                    onClick={handleRevoke}
-                    disabled={loading}
-                    className="ml-auto inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100 transition disabled:opacity-60"
-                  >
+                  <button onClick={handleRevoke} disabled={loading}
+                    className="ml-auto inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100 transition disabled:opacity-60">
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
                     Revoke Approval
                   </button>
                 )}
-                {/* Revoke + Refund button — already paid */}
                 {request.custom_payment_status === "paid" && (
-                  <button
-                    onClick={handleRevoke}
-                    disabled={loading}
-                    className="ml-auto inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 transition disabled:opacity-60"
-                  >
+                  <button onClick={handleRevoke} disabled={loading}
+                    className="ml-auto inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 transition disabled:opacity-60">
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
-                    Revoke &amp; Refund
+                    Revoke Plan
                   </button>
                 )}
               </>
             )}
 
-            {/* ── Pending / Reviewing / Rejected states ── */}
+            {/* Pending / Reviewing / Rejected */}
             {request.status !== "approved" && request.status !== "revoked" && (
               <>
                 {request.status !== "rejected" && (
-                  <button onClick={handleReject} disabled={loading} className="rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition disabled:opacity-60">
+                  <button onClick={handleReject} disabled={loading}
+                    className="rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition disabled:opacity-60">
                     Reject
                   </button>
                 )}
                 {request.status !== "reviewing" && request.status !== "rejected" && (
-                  <button onClick={handleMarkReviewing} disabled={loading} className="rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-semibold text-blue-600 hover:bg-blue-50 transition disabled:opacity-60">
+                  <button onClick={handleMarkReviewing} disabled={loading}
+                    className="rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-semibold text-blue-600 hover:bg-blue-50 transition disabled:opacity-60">
                     Mark Reviewing
                   </button>
                 )}
-                <button onClick={handleApprove} disabled={loading} className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 transition disabled:opacity-60">
+                <button onClick={handleApprove} disabled={loading}
+                  className="ml-auto inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 transition disabled:opacity-60">
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  Approve Plan
+                  {hasActivePlan ? "Approve Upgrade" : "Approve Plan"}
                 </button>
               </>
             )}

@@ -11,6 +11,7 @@ from .views import (
     EmployerProfileView,
     PasswordResetRequestView,
     PasswordResetConfirmView,
+    ChangePasswordView,
 )
 
 urlpatterns = [
@@ -22,6 +23,7 @@ urlpatterns = [
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('auth/password/reset/', PasswordResetRequestView.as_view(), name='password-reset'),
     path('auth/password/reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+    path('auth/password/change/', ChangePasswordView.as_view(), name='password-change'),
     # Current user
     path('auth/me/', CurrentUserView.as_view(), name='current-user'),
     # Profiles

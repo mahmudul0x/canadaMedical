@@ -153,18 +153,13 @@ function EmployersPage() {
 
 // ─── Enterprise Request Modal ─────────────────────────────────────────────────
 
-const VOLUME_OPTIONS = [
-  { value: "1_5",    label: "1–5 physicians/month" },
-  { value: "6_10",   label: "6–10 physicians/month" },
-  { value: "11_20",  label: "11–20 physicians/month" },
-  { value: "20_plus",label: "20+ physicians/month" },
-];
-
 interface EnterpriseForm {
   organization_name: string;
   contact_name: string;
   contact_email: string;
   contact_phone: string;
+  num_job_posts: string;
+  budget_range: string;
   monthly_hiring_volume: string;
   message: string;
 }
@@ -172,7 +167,8 @@ interface EnterpriseForm {
 function EnterpriseModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState<EnterpriseForm>({
     organization_name: "", contact_name: "", contact_email: "",
-    contact_phone: "", monthly_hiring_volume: "", message: "",
+    contact_phone: "", num_job_posts: "", budget_range: "",
+    monthly_hiring_volume: "", message: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ request_id: number } | null>(null);
@@ -183,10 +179,13 @@ function EnterpriseModal({ onClose }: { onClose: () => void }) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.monthly_hiring_volume) { toast.error("Please select a hiring volume."); return; }
     setSubmitting(true);
     try {
-      const r = await api.post("/api/subscriptions/enterprise/request/", form);
+      const payload = {
+        ...form,
+        num_job_posts: form.num_job_posts ? parseInt(form.num_job_posts) : null,
+      };
+      const r = await api.post("/api/subscriptions/enterprise/request/", payload);
       const data = r.data?.data ?? r.data;
       setSubmitted({ request_id: data?.request_id ?? data?.id ?? 1 });
     } catch (err) {
@@ -199,7 +198,7 @@ function EnterpriseModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4 sticky top-0 bg-card z-10">
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5 text-accent" />
             <h2 className="font-bold text-foreground">Enterprise Plan — Contact Sales</h2>
@@ -230,48 +229,75 @@ function EnterpriseModal({ onClose }: { onClose: () => void }) {
             <>
               <p className="mb-5 text-sm text-muted-foreground">Tell us about your organization and we'll create a custom plan for you.</p>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Organization Name *</label>
-                  <input required value={form.organization_name} onChange={e => update("organization_name", e.target.value)}
-                    placeholder="Toronto Health Network" className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Contact Person Name *</label>
-                  <input required value={form.contact_name} onChange={e => update("contact_name", e.target.value)}
-                    placeholder="Dr. Jane Smith" className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Contact Email *</label>
-                  <input required type="email" value={form.contact_email} onChange={e => update("contact_email", e.target.value)}
-                    placeholder="contact@organization.ca" className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
-                </div>
-                <div>
-                  <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground"><Phone className="h-3.5 w-3.5" /> Phone Number</label>
-                  <input type="tel" value={form.contact_phone} onChange={e => update("contact_phone", e.target.value)}
-                    placeholder="+1-416-555-0100" className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
-                </div>
-                <div>
-                  <label className="mb-2 block text-xs font-semibold text-muted-foreground">Monthly Hiring Volume *</label>
-                  <div className="space-y-2">
-                    {VOLUME_OPTIONS.map(o => (
-                      <label key={o.value} className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 transition ${form.monthly_hiring_volume === o.value ? "border-accent bg-accent/5" : "border-border hover:border-accent/30"}`}>
-                        <input type="radio" name="volume" value={o.value} checked={form.monthly_hiring_volume === o.value} onChange={() => update("monthly_hiring_volume", o.value)} className="accent-accent" />
-                        <span className="text-sm text-foreground">{o.label}</span>
-                      </label>
-                    ))}
+
+                {/* Contact info */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Organization Name <span className="text-rose-500">*</span></label>
+                    <input required value={form.organization_name} onChange={e => update("organization_name", e.target.value)}
+                      placeholder="e.g. Toronto Health Network"
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Contact Name <span className="text-rose-500">*</span></label>
+                    <input required value={form.contact_name} onChange={e => update("contact_name", e.target.value)}
+                      placeholder="Dr. Jane Smith"
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Phone</label>
+                    <input type="tel" value={form.contact_phone} onChange={e => update("contact_phone", e.target.value)}
+                      placeholder="+1-416-555-0100"
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Contact Email <span className="text-rose-500">*</span></label>
+                    <input required type="email" value={form.contact_email} onChange={e => update("contact_email", e.target.value)}
+                      placeholder="contact@organization.ca"
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
                   </div>
                 </div>
+
+                {/* Hiring requirements */}
+                <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
+                  <p className="text-xs font-bold text-foreground uppercase tracking-wide">Hiring Requirements</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Job Posts Needed</label>
+                      <input type="number" min="1" value={form.num_job_posts} onChange={e => update("num_job_posts", e.target.value)}
+                        placeholder="e.g. 20"
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Monthly Hiring Volume</label>
+                      <input value={form.monthly_hiring_volume} onChange={e => update("monthly_hiring_volume", e.target.value)}
+                        placeholder="e.g. 5–10 physicians/month"
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Budget Range</label>
+                      <input value={form.budget_range} onChange={e => update("budget_range", e.target.value)}
+                        placeholder="e.g. $500–1,000/month or flexible"
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Message */}
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Additional Message</label>
+                  <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Additional Notes</label>
                   <textarea value={form.message} onChange={e => update("message", e.target.value)} rows={3}
-                    placeholder="Tell us more about your hiring needs…"
+                    placeholder="Specialty requirements, preferred locations, timeline, or anything else…"
                     className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15 resize-none" />
                 </div>
+
                 <div className="flex gap-3 border-t border-border pt-4">
-                  <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-secondary transition">
+                  <button type="button" onClick={onClose}
+                    className="flex-1 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-secondary transition">
                     Cancel
                   </button>
-                  <button type="submit" disabled={submitting} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-bold text-primary hover:brightness-110 transition disabled:opacity-60">
+                  <button type="submit" disabled={submitting}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-bold text-primary hover:brightness-110 transition disabled:opacity-60">
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
                     Submit Request
                   </button>

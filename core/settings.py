@@ -27,6 +27,8 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'storages',
     'channels',
+    # Third-party (task queue)
+    'django_celery_results',
     # Local apps
     'accounts',
     'jobs',
@@ -38,6 +40,7 @@ INSTALLED_APPS = [
     'admin_panel',
     'notifications',
     'subscriptions',
+    'emails',
 ]
 
 MIDDLEWARE = [
@@ -83,11 +86,31 @@ if REDIS_URL:
         }
     }
 else:
-    # Development / single-worker only — messages do not cross process boundaries.
-    # Set REDIS_URL in production to enable cross-worker WebSocket delivery.
+    # Development fallback — no Redis needed, but WebSocket messages stay in-process.
+    # Set REDIS_URL in .env (or production env) to enable real-time cross-worker delivery.
     CHANNEL_LAYERS = {
         'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'},
     }
+
+# ── Celery ────────────────────────────────────────────────────────────────────
+# Without Redis: uses in-memory broker (tasks run but don't survive crashes/restarts).
+# Set REDIS_URL in .env for production-grade async email delivery.
+CELERY_BROKER_URL = config('REDIS_URL', default='memory://')
+CELERY_RESULT_BACKEND = 'django-db'          # stores results in DB via django-celery-results
+CELERY_CACHE_BACKEND = 'default'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 60          # kill task if it runs >60s
+CELERY_TASK_SOFT_TIME_LIMIT = 30     # raise SoftTimeLimitExceeded at 30s
+CELERY_TASK_ACKS_LATE = True         # re-queue if worker dies mid-task
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # one task at a time per worker thread
+# In development: run tasks synchronously so emails fire without a running worker.
+if DEBUG:
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
 
 DATABASES = {
     'default': {
@@ -195,12 +218,16 @@ if EMAIL_HOST_USER:
     EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
     EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
     EMAIL_USE_TLS = True
-    DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+    DEFAULT_FROM_EMAIL = config('EMAIL_FROM', default=EMAIL_HOST_USER)
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
     DEFAULT_FROM_EMAIL = 'noreply@canadianphysicianrecruitment.com'
 
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+
+RESEND_API_KEY = config('RESEND_API_KEY', default='')
+RESEND_FROM_EMAIL = config('RESEND_FROM_EMAIL', default='onboarding@resend.dev')
+RESEND_TEST_EMAIL = config('RESEND_TEST_EMAIL', default='')
 
 STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY', default='')
 STRIPE_PUBLISHABLE_KEY = config('STRIPE_PUBLISHABLE_KEY', default='')

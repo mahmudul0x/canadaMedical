@@ -515,7 +515,10 @@ class JobApplicationsForEmployerView(generics.ListAPIView):
 )
 class UpdateApplicationStatusView(APIView):
     permission_classes = [IsEmployer]
-    VALID_STATUSES = [choice[0] for choice in JobApplication.STATUS_CHOICES if choice[0] != 'withdrawn']
+    VALID_STATUSES = [
+        choice[0] for choice in JobApplication.STATUS_CHOICES
+        if choice[0] not in ('withdrawn', 'accepted', 'offer_declined')
+    ]
     MAX_NOTES_LENGTH = 5_000
 
     def patch(self, request, pk):
@@ -547,10 +550,134 @@ class UpdateApplicationStatusView(APIView):
             update_fields.append('employer_notes')
 
         application.save(update_fields=update_fields)
+
+        if new_status and new_status in ('reviewed', 'shortlisted', 'interview', 'offered', 'rejected'):
+            from emails.tasks import send_application_status_email_task
+            employer_name = getattr(application.job.employer, 'company_name', '') or request.user.full_name
+            send_application_status_email_task.delay(
+                application.physician.user.pk,
+                application.job.title,
+                employer_name,
+                new_status,
+            )
+
         return success_response(
             data=JobApplicationSerializer(application, context={'request': request}).data,
             message='Application updated.',
         )
+
+
+class RespondToOfferView(APIView):
+    """Physician accepts or declines a job offer."""
+    permission_classes = [IsPhysician]
+
+    def post(self, request, pk):
+        action = str(request.data.get('action', '')).strip()
+        if action not in ('accept', 'decline'):
+            return success_response(
+                message='action must be "accept" or "decline".',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        application = get_object_or_404(
+            JobApplication.objects.select_related(
+                'job__employer__user', 'job__employer', 'physician__user'
+            ),
+            pk=pk,
+            physician=request.user.physician_profile,
+        )
+
+        if application.status != 'offered':
+            return success_response(
+                message='This application does not have an active offer.',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from notifications.signals import _notify_user
+        from emails.tasks import (
+            send_offer_accepted_email_task,
+            send_offer_accepted_confirmation_task,
+            send_offer_declined_email_task,
+        )
+
+        physician_name = request.user.full_name or request.user.email
+        employer_user = application.job.employer.user
+        employer_name = getattr(application.job.employer, 'company_name', '') or employer_user.full_name
+        job_title = application.job.title
+
+        with transaction.atomic():
+            if action == 'accept':
+                application.status = 'accepted'
+                application.save(update_fields=['status', 'updated_at'])
+
+                _notify_user(
+                    employer_user,
+                    'employer_offer_accepted',
+                    f'Offer accepted — {job_title}',
+                    f'{physician_name} accepted your offer for "{job_title}". If the position is filled, close the job posting from your dashboard.',
+                    link=f'/dashboard/employer?tab=applications',
+                )
+                send_offer_accepted_email_task.delay(employer_user.pk, physician_name, job_title)
+                send_offer_accepted_confirmation_task.delay(request.user.pk, job_title, employer_name)
+                response_message = 'Congratulations! You have accepted the offer.'
+
+            else:  # decline
+                application.status = 'offer_declined'
+                application.save(update_fields=['status', 'updated_at'])
+
+                _notify_user(
+                    employer_user,
+                    'employer_offer_declined',
+                    f'Offer declined — {job_title}',
+                    f'{physician_name} has declined your offer for "{job_title}". The job remains active.',
+                    link=f'/dashboard/employer?tab=applications',
+                )
+                send_offer_declined_email_task.delay(employer_user.pk, physician_name, job_title)
+                response_message = 'You have declined the offer.'
+
+        return success_response(
+            data=JobApplicationSerializer(application, context={'request': request}).data,
+            message=response_message,
+        )
+
+
+class SendApplicationEmailView(APIView):
+    permission_classes = [IsEmployer]
+    MAX_SUBJECT_LENGTH = 200
+    MAX_MESSAGE_LENGTH = 5_000
+
+    def post(self, request, pk):
+        from emails.tasks import send_employer_custom_email_task
+        application = get_object_or_404(
+            JobApplication.objects.select_related('job__employer__user', 'physician__user', 'job__employer'),
+            pk=pk,
+        )
+        if application.job.employer.user != request.user:
+            return success_response(message='Permission denied.', status_code=status.HTTP_403_FORBIDDEN)
+
+        subject = str(request.data.get('subject', '')).strip()
+        message = str(request.data.get('message', '')).strip()
+
+        if not subject or not message:
+            return success_response(
+                message='Both subject and message are required.',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(subject) > self.MAX_SUBJECT_LENGTH or len(message) > self.MAX_MESSAGE_LENGTH:
+            return success_response(
+                message='Subject or message is too long.',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        employer_name = getattr(application.job.employer, 'company_name', '') or request.user.full_name
+        send_employer_custom_email_task.delay(
+            application.physician.user.pk,
+            employer_name,
+            application.job.title,
+            subject,
+            message,
+        )
+        return success_response(message='Email queued and will be delivered shortly.')
 
 
 @extend_schema_view(

@@ -20,9 +20,16 @@ const WS_BASE = (import.meta.env.VITE_API_URL || "http://localhost:8000")
 
 // Which React Query keys to invalidate per notification type
 const INVALIDATION_MAP: Record<string, string[][]> = {
-  employer_job_approved: [["my-jobs"], ["my-jobs-all"], ["my-subscription"]],
-  employer_job_rejected: [["my-jobs"], ["my-jobs-all"]],
-  employer_application:  [["employer-all-applications"], ["employer-all-applications-counts"]],
+  // Employer
+  employer_job_approved:          [["my-jobs"], ["my-jobs-all"], ["my-subscription"]],
+  employer_job_rejected:          [["my-jobs"], ["my-jobs-all"]],
+  employer_application:           [["employer-all-applications"], ["employer-all-applications-counts"]],
+  employer_offer_accepted:        [["employer-all-applications"], ["my-jobs"], ["my-jobs-all"]],
+  employer_offer_declined:        [["employer-all-applications"]],
+  employer_custom_plan_payment:   [["my-enterprise-request"], ["my-subscription"]],
+  employer_custom_plan_active:    [["my-enterprise-request"], ["my-subscription"]],
+  // Physician
+  physician_app_status:           [["my-applications"]],
 };
 
 export function useNotifications() {
@@ -48,14 +55,18 @@ export function useNotifications() {
       qc.invalidateQueries({ queryKey: key })
     );
 
-    // Show toast for job status changes
-    if (n.notification_type === "employer_job_approved") {
-      toast.success(n.title, { duration: 5000 });
-    } else if (n.notification_type === "employer_job_rejected") {
-      toast.error(n.title, { duration: 5000 });
-    } else if (n.notification_type === "employer_application") {
-      toast(n.title, { icon: "📩", duration: 4000 });
-    }
+    // Show toast per notification type
+    const toastMap: Record<string, () => void> = {
+      employer_job_approved:        () => toast.success(n.title, { duration: 5000 }),
+      employer_job_rejected:        () => toast.error(n.title, { duration: 5000 }),
+      employer_application:         () => toast(n.title, { icon: "📩", duration: 4000 }),
+      employer_offer_accepted:      () => toast.success(n.title, { icon: "🎉", duration: 6000 }),
+      employer_offer_declined:      () => toast(n.title, { icon: "❌", duration: 5000 }),
+      employer_custom_plan_payment: () => toast(n.title, { icon: "💳", duration: 7000 }),
+      employer_custom_plan_active:  () => toast.success(n.title, { icon: "🚀", duration: 7000 }),
+      physician_app_status:         () => toast(n.title, { icon: "🔔", duration: 5000 }),
+    };
+    toastMap[n.notification_type]?.();
   }, [qc]);
 
   // ── HTTP polling (active when WebSocket is not live) ──────────────────────

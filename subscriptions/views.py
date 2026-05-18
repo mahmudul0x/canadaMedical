@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from core.exceptions import success_response
 from core.permissions import IsEmployer, IsAdminUser
 from .models import SubscriptionPlan, UserSubscription, PaymentHistory, EnterpriseRequest, CustomSubscriptionPlan
+from emails.tasks import send_payment_confirmation_email_task
 from .serializers import (
     SubscriptionPlanSerializer, UserSubscriptionSerializer, PaymentHistorySerializer,
     EnterpriseRequestSerializer, EnterpriseRequestAdminSerializer, CustomSubscriptionPlanSerializer,
@@ -62,7 +63,7 @@ class CreateCheckoutSessionView(APIView):
                 payment_method_types=['card'],
                 mode='subscription',
                 line_items=[{'price': plan.stripe_price_id, 'quantity': 1}],
-                success_url=f"{settings.FRONTEND_URL}/dashboard/employer?subscription=success",
+                success_url=f"{settings.FRONTEND_URL}/dashboard/employer?subscription=success&session_id={{CHECKOUT_SESSION_ID}}",
                 cancel_url=f"{settings.FRONTEND_URL}/employers?subscription=cancelled",
                 customer_email=request.user.email,
                 metadata={
@@ -113,8 +114,7 @@ class StripeWebhookView(APIView):
             elif event_type == 'customer.subscription.updated':
                 self._handle_subscription_updated(data)
             elif event_type == 'customer.subscription.deleted':
-                sub_id = getattr(data, 'id', '') or ''
-                UserSubscription.objects.filter(stripe_subscription_id=sub_id).update(status='cancelled')
+                self._handle_subscription_deleted(data)
             elif event_type == 'invoice.payment_succeeded':
                 self._handle_invoice_paid(data)
             elif event_type == 'invoice.payment_failed':
@@ -163,6 +163,10 @@ class StripeWebhookView(APIView):
                 custom_plan.is_active = True
                 custom_plan.payment_status = 'paid'
                 custom_plan.save(update_fields=['is_active', 'payment_status', 'updated_at'])
+
+                # Cancel any existing Stripe subscription (e.g. Professional plan)
+                # before switching the user to the new enterprise subscription.
+                self._cancel_old_subscription(user, new_subscription_id=subscription_id)
 
                 # Move UserSubscription to enterprise plan
                 try:
@@ -232,6 +236,18 @@ class StripeWebhookView(APIView):
             stripe_payment_intent_id=getattr(session, 'payment_intent', '') or '',
         )
 
+        try:
+            sub_obj = UserSubscription.objects.get(user=user)
+            period_end = sub_obj.current_period_end.strftime('%B %d, %Y') if sub_obj.current_period_end else ''
+        except UserSubscription.DoesNotExist:
+            period_end = ''
+        send_payment_confirmation_email_task.delay(
+            user.pk,
+            plan.name,
+            f"${amount_total / 100:.2f}",
+            period_end,
+        )
+
     def _handle_subscription_updated(self, sub):
         sub_id = getattr(sub, 'id', '') or ''
         if not sub_id:
@@ -294,6 +310,68 @@ class StripeWebhookView(APIView):
             stripe_payment_intent_id=getattr(invoice, 'payment_intent', '') or '',
             stripe_invoice_id=getattr(invoice, 'id', '') or '',
         )
+
+        next_period_end = user_sub.current_period_end.strftime('%B %d, %Y') if user_sub.current_period_end else ''
+        send_payment_confirmation_email_task.delay(
+            user_sub.user.pk,
+            user_sub.plan.name,
+            f"${amount_paid / 100:.2f}",
+            next_period_end,
+        )
+
+    def _cancel_old_subscription(self, user, new_subscription_id: str):
+        """Cancel the user's existing Stripe subscription (if any) when they
+        upgrade to a new plan so they are not double-charged."""
+        try:
+            old_sub = UserSubscription.objects.get(user=user)
+            old_sid = old_sub.stripe_subscription_id or ''
+            if old_sid and old_sid != new_subscription_id:
+                s = _stripe()
+                try:
+                    s.Subscription.modify(old_sid, cancel_at_period_end=True)
+                    old_sub.cancel_at_period_end = True
+                    old_sub.save(update_fields=['cancel_at_period_end'])
+                    logger.info(
+                        'Old subscription %s scheduled for cancellation (user %s upgrading to enterprise)',
+                        old_sid, user.email,
+                    )
+                except stripe.StripeError as e:
+                    logger.warning('Could not cancel old subscription %s during enterprise upgrade: %s', old_sid, e)
+        except UserSubscription.DoesNotExist:
+            pass
+
+    def _handle_subscription_deleted(self, sub):
+        """Handle customer.subscription.deleted:
+        - Mark UserSubscription as cancelled
+        - Deactivate associated CustomSubscriptionPlan
+        - Downgrade user to free plan
+        """
+        sub_id = getattr(sub, 'id', '') or ''
+        if not sub_id:
+            return
+
+        qs = UserSubscription.objects.filter(stripe_subscription_id=sub_id).select_related('user', 'plan')
+        for user_sub in qs:
+            # Deactivate custom plan if this was an enterprise subscription
+            try:
+                cp = user_sub.user.custom_plan
+                if cp.is_active and cp.payment_status == 'paid':
+                    cp.is_active = False
+                    cp.save(update_fields=['is_active', 'updated_at'])
+            except CustomSubscriptionPlan.DoesNotExist:
+                pass
+
+            # Downgrade UserSubscription to free plan
+            try:
+                free_plan = SubscriptionPlan.objects.get(is_free=True, plan_type='employer')
+                user_sub.plan = free_plan
+                user_sub.status = 'cancelled'
+                user_sub.stripe_subscription_id = ''
+                user_sub.cancel_at_period_end = False
+                user_sub.save(update_fields=['plan', 'status', 'stripe_subscription_id', 'cancel_at_period_end'])
+            except SubscriptionPlan.DoesNotExist:
+                user_sub.status = 'cancelled'
+                user_sub.save(update_fields=['status'])
 
 
 class MySubscriptionView(APIView):
@@ -455,6 +533,138 @@ class ReactivateSubscriptionView(APIView):
         return success_response(message='Subscription reactivated successfully. Your plan will continue as normal.')
 
 
+class SyncSubscriptionView(APIView):
+    """
+    Called by the frontend after Stripe checkout success redirect.
+    Uses the checkout session_id (passed in the success URL) to retrieve the
+    session directly from Stripe — no webhook needed.
+    """
+    permission_classes = [IsEmployer]
+
+    def post(self, request):
+        session_id = request.data.get('session_id', '').strip()
+        if not session_id:
+            return success_response(
+                message='session_id is required.',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        s = _stripe()
+        try:
+            session = s.checkout.Session.retrieve(
+                session_id,
+                expand=['subscription', 'subscription.items.data.price'],
+            )
+        except stripe.StripeError as e:
+            logger.error('Stripe session retrieve failed: %s', e)
+            return success_response(message='Stripe error.', status_code=status.HTTP_502_BAD_GATEWAY)
+
+        if session.payment_status != 'paid':
+            return success_response(message='Payment not completed yet.')
+
+        # Parse period timestamps safely
+        def _ts(val):
+            if not val:
+                return None
+            try:
+                return timezone.make_aware(datetime.utcfromtimestamp(int(val)), dt_timezone.utc)
+            except Exception:
+                return None
+
+        # ── Custom / Enterprise payment link ──────────────────────────────────
+        metadata = getattr(session, 'metadata', None) or {}
+        is_custom = (metadata.get('custom_plan') if hasattr(metadata, 'get') else getattr(metadata, 'custom_plan', None)) == 'true'
+        enterprise_request_id = metadata.get('enterprise_request_id') if hasattr(metadata, 'get') else getattr(metadata, 'enterprise_request_id', None)
+
+        if is_custom and enterprise_request_id:
+            try:
+                cp = CustomSubscriptionPlan.objects.select_related('enterprise_request').get(
+                    enterprise_request_id=enterprise_request_id
+                )
+            except CustomSubscriptionPlan.DoesNotExist:
+                # Fall back to lookup by user in case enterprise_request changed (re-approval)
+                try:
+                    cp = request.user.custom_plan
+                except CustomSubscriptionPlan.DoesNotExist:
+                    return success_response(message='Custom plan not found.')
+
+            now = timezone.now()
+            cp.is_active = True
+            cp.payment_status = 'paid'
+            cp.save(update_fields=['is_active', 'payment_status', 'updated_at'])
+
+            stripe_sub = session.subscription
+            customer_id = getattr(session, 'customer', '') or ''
+            subscription_id = stripe_sub.id if stripe_sub else ''
+
+            try:
+                enterprise_plan = SubscriptionPlan.objects.get(plan_type='employer', is_enterprise=True)
+                UserSubscription.objects.update_or_create(
+                    user=request.user,
+                    defaults={
+                        'plan': enterprise_plan,
+                        'stripe_customer_id': customer_id,
+                        'stripe_subscription_id': subscription_id,
+                        'status': 'active',
+                        'cancel_at_period_end': False,
+                        'current_period_start': now,
+                        'current_period_end': _ts(getattr(stripe_sub, 'current_period_end', None)) or now + timedelta(days=30),
+                    },
+                )
+            except SubscriptionPlan.DoesNotExist:
+                pass
+
+            amount_total = getattr(session, 'amount_total', None) or 0
+            currency = getattr(session, 'currency', 'cad') or 'cad'
+            PaymentHistory.objects.get_or_create(
+                stripe_payment_intent_id=getattr(session, 'payment_intent', '') or '',
+                defaults={
+                    'user': request.user,
+                    'amount': amount_total / 100,
+                    'currency': currency,
+                    'status': 'succeeded',
+                    'description': f'Enterprise Custom Plan — {cp.enterprise_request.organization_name}',
+                },
+            )
+
+            send_payment_confirmation_email_task.delay(
+                request.user.pk,
+                'Enterprise Custom Plan',
+                f"${amount_total / 100:.2f}",
+                '',
+            )
+
+            logger.info('Custom plan activated via session %s for user %s', session_id, request.user.email)
+            return success_response(message='Enterprise plan activated.')
+
+        # ── Standard plan checkout ─────────────────────────────────────────────
+        stripe_sub = session.subscription
+        if not stripe_sub:
+            return success_response(message='No subscription attached to this session.')
+
+        # Get plan from price ID
+        try:
+            price_id = stripe_sub.items.data[0].price.id
+            plan = SubscriptionPlan.objects.get(stripe_price_id=price_id)
+        except (IndexError, AttributeError, SubscriptionPlan.DoesNotExist):
+            return success_response(message='Plan not recognised — contact support.')
+
+        UserSubscription.objects.update_or_create(
+            user=request.user,
+            defaults={
+                'plan': plan,
+                'stripe_customer_id': getattr(session, 'customer', '') or '',
+                'stripe_subscription_id': stripe_sub.id,
+                'status': 'active',
+                'cancel_at_period_end': getattr(stripe_sub, 'cancel_at_period_end', False),
+                'current_period_start': _ts(getattr(stripe_sub, 'current_period_start', None)),
+                'current_period_end': _ts(getattr(stripe_sub, 'current_period_end', None)),
+            },
+        )
+        logger.info('Subscription synced via session %s for user %s', session_id, request.user.email)
+        return success_response(message='Subscription synced.')
+
+
 class PaymentHistoryView(APIView):
     permission_classes = [IsAuthenticated]
     PAGE_SIZE = 20
@@ -479,6 +689,196 @@ class PaymentHistoryView(APIView):
 # ---------------------------------------------------------------------------
 # Enterprise Plan views
 # ---------------------------------------------------------------------------
+
+class SyncCustomPlanView(APIView):
+    """
+    Called after the user pays via a custom-plan payment link.
+    Works even when no session_id is available (old payment links).
+    Queries Stripe for the most recent completed checkout session on this
+    payment link and activates the plan if payment is confirmed.
+    """
+    permission_classes = [IsEmployer]
+
+    def post(self, request):
+        try:
+            cp = request.user.custom_plan
+        except CustomSubscriptionPlan.DoesNotExist:
+            return success_response(message='No custom plan found.', status_code=status.HTTP_404_NOT_FOUND)
+
+        if cp.payment_status == 'paid' and cp.is_active:
+            return success_response(message='Plan already active.')
+
+        if cp.payment_status != 'pending_payment':
+            return success_response(message='No pending payment found.', status_code=status.HTTP_400_BAD_REQUEST)
+
+        if not cp.stripe_payment_link_id:
+            return success_response(message='No payment link associated with this plan.', status_code=status.HTTP_400_BAD_REQUEST)
+
+        s = _stripe()
+        try:
+            sessions = s.checkout.Session.list(
+                payment_link=cp.stripe_payment_link_id,
+                limit=5,
+                expand=['data.subscription'],
+            )
+        except stripe.StripeError as e:
+            logger.error('Stripe session list failed: %s', e)
+            return success_response(message='Stripe error — try again.', status_code=status.HTTP_502_BAD_GATEWAY)
+
+        paid_session = next(
+            (sess for sess in sessions.data if sess.payment_status == 'paid'),
+            None
+        )
+        if not paid_session:
+            return success_response(message='No completed payment found yet. Please wait a moment and try again.')
+
+        now = timezone.now()
+        cp.is_active = True
+        cp.payment_status = 'paid'
+        cp.save(update_fields=['is_active', 'payment_status', 'updated_at'])
+
+        stripe_sub = paid_session.subscription
+        customer_id = getattr(paid_session, 'customer', '') or ''
+        subscription_id = stripe_sub.id if stripe_sub else ''
+
+        def _ts(val):
+            if not val:
+                return None
+            try:
+                return timezone.make_aware(datetime.utcfromtimestamp(int(val)), dt_timezone.utc)
+            except Exception:
+                return None
+
+        # Cancel any pre-existing Stripe subscription (e.g. Professional plan)
+        try:
+            old_sub = UserSubscription.objects.get(user=request.user)
+            old_sid = old_sub.stripe_subscription_id or ''
+            if old_sid and old_sid != subscription_id:
+                s = _stripe()
+                try:
+                    s.Subscription.modify(old_sid, cancel_at_period_end=True)
+                    old_sub.cancel_at_period_end = True
+                    old_sub.save(update_fields=['cancel_at_period_end'])
+                except stripe.StripeError as e:
+                    logger.warning('Could not cancel old subscription %s during enterprise upgrade: %s', old_sid, e)
+        except UserSubscription.DoesNotExist:
+            pass
+
+        try:
+            enterprise_plan = SubscriptionPlan.objects.get(plan_type='employer', is_enterprise=True)
+            UserSubscription.objects.update_or_create(
+                user=request.user,
+                defaults={
+                    'plan': enterprise_plan,
+                    'stripe_customer_id': customer_id,
+                    'stripe_subscription_id': subscription_id,
+                    'status': 'active',
+                    'cancel_at_period_end': False,
+                    'current_period_start': now,
+                    'current_period_end': _ts(getattr(stripe_sub, 'current_period_end', None)) or now + timedelta(days=30),
+                },
+            )
+        except SubscriptionPlan.DoesNotExist:
+            pass
+
+        amount_total = getattr(paid_session, 'amount_total', None) or 0
+        currency = getattr(paid_session, 'currency', 'cad') or 'cad'
+        PaymentHistory.objects.get_or_create(
+            stripe_payment_intent_id=getattr(paid_session, 'payment_intent', '') or '',
+            defaults={
+                'user': request.user,
+                'amount': amount_total / 100,
+                'currency': currency,
+                'status': 'succeeded',
+                'description': f'Enterprise Custom Plan — {cp.enterprise_request.organization_name}',
+            },
+        )
+
+        send_payment_confirmation_email_task.delay(
+            request.user.pk,
+            'Enterprise Custom Plan',
+            f"${amount_total / 100:.2f}",
+            '',
+        )
+
+        logger.info('Custom plan activated via poll-sync for user %s', request.user.email)
+        return success_response(message='Enterprise plan activated.')
+
+
+class CancelCustomPlanView(APIView):
+    """Employer cancels a custom plan — handles both pending-payment and paid states."""
+    permission_classes = [IsEmployer]
+
+    def post(self, request):
+        try:
+            cp = request.user.custom_plan
+        except CustomSubscriptionPlan.DoesNotExist:
+            return success_response(
+                message='No custom plan found.',
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        from django.utils import timezone as tz
+
+        # ── Pending payment: employer decides not to pay ──────────────────────
+        if cp.payment_status == 'pending_payment':
+            cp.payment_status = 'revoked'
+            cp.is_active = False
+            cp.save(update_fields=['payment_status', 'is_active', 'updated_at'])
+            try:
+                er = cp.enterprise_request
+                er.status = 'revoked'
+                er.revoked_by = request.user
+                er.revoked_at = tz.now()
+                er.save(update_fields=['status', 'revoked_by', 'revoked_at', 'updated_at'])
+            except Exception:
+                pass
+            # Deactivate the Stripe payment link so it can no longer be paid
+            if cp.stripe_payment_link_id:
+                try:
+                    s = _stripe()
+                    s.PaymentLink.modify(cp.stripe_payment_link_id, active=False)
+                except stripe.StripeError as e:
+                    logger.warning('Could not deactivate payment link during user cancel: %s', e)
+            return success_response(message='Custom plan order cancelled successfully.')
+
+        # ── Active paid plan: cancel at period end via Stripe ─────────────────
+        if cp.payment_status == 'paid' and cp.is_active:
+            try:
+                user_sub = UserSubscription.objects.get(user=request.user)
+            except UserSubscription.DoesNotExist:
+                return success_response(
+                    message='No subscription record found.',
+                    status_code=status.HTTP_404_NOT_FOUND,
+                )
+            if not user_sub.stripe_subscription_id:
+                return success_response(
+                    message='No Stripe subscription linked to this plan.',
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+            s = _stripe()
+            try:
+                s.Subscription.modify(user_sub.stripe_subscription_id, cancel_at_period_end=True)
+            except stripe.StripeError as e:
+                logger.error('Stripe cancel error for custom plan: %s', e)
+                return success_response(
+                    message='Payment provider error — please try again.',
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                )
+            user_sub.cancel_at_period_end = True
+            user_sub.save(update_fields=['cancel_at_period_end'])
+            return success_response(
+                message=(
+                    'Your enterprise plan will be cancelled at the end of the current billing period. '
+                    'You will be downgraded to the free plan after that.'
+                )
+            )
+
+        return success_response(
+            message='No active or pending plan to cancel.',
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
 
 class EnterpriseRequestCreateView(APIView):
     permission_classes = [IsEmployer]
@@ -513,10 +913,23 @@ class EnterpriseRequestCreateView(APIView):
             message=(
                 f'{enterprise_request.contact_name} ({enterprise_request.contact_email}) '
                 f'from {enterprise_request.organization_name} has submitted an enterprise plan request. '
-                f'Hiring volume: {enterprise_request.get_monthly_hiring_volume_display()}.'
+                f'Hiring volume: {enterprise_request.monthly_hiring_volume or "Not specified"}.'
             ),
             related_id=enterprise_request.id,
         )
+
+        # Email all admin users about the new request
+        from emails.tasks import send_enterprise_request_admin_email_task
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        admin_emails = list(User.objects.filter(is_staff=True).values_list('email', flat=True))
+        for admin_email in admin_emails:
+            if admin_email:
+                send_enterprise_request_admin_email_task.delay(
+                    admin_email,
+                    request.user.pk,
+                    enterprise_request.pk,
+                )
 
         return success_response(
             data=EnterpriseRequestSerializer(enterprise_request).data,
@@ -533,6 +946,17 @@ class MyEnterpriseRequestView(APIView):
         if not enterprise_request:
             return success_response(data=None)
         return success_response(data=EnterpriseRequestSerializer(enterprise_request).data)
+
+
+class MyEnterpriseRequestsHistoryView(APIView):
+    """Returns all enterprise requests for the authenticated employer, newest first."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        requests = EnterpriseRequest.objects.filter(
+            user=request.user
+        ).order_by('-created_at')
+        return success_response(data=EnterpriseRequestSerializer(requests, many=True).data)
 
 
 class AdminEnterpriseRequestListView(APIView):
@@ -582,11 +1006,16 @@ class AdminEnterpriseRequestApproveView(APIView):
         except EnterpriseRequest.DoesNotExist:
             return success_response(message='Enterprise request not found.', status_code=status.HTTP_404_NOT_FOUND)
 
-        if enterprise_request.status == 'approved':
-            return success_response(
-                message='This request has already been approved.',
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
+        # Block only when the employer has already paid — re-approving a paid plan
+        # would create a duplicate Stripe price/link and is not safe.
+        try:
+            if enterprise_request.custom_plan.payment_status == 'paid':
+                return success_response(
+                    message='This plan has already been paid and is active. Revoke it first if you need to change it.',
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                )
+        except CustomSubscriptionPlan.DoesNotExist:
+            pass
 
         custom_job_limit = request.data.get('custom_job_limit', enterprise_request.custom_job_limit)
         custom_price_monthly = request.data.get('custom_price_monthly', enterprise_request.custom_price_monthly)
@@ -631,7 +1060,7 @@ class AdminEnterpriseRequestApproveView(APIView):
                     },
                     after_completion={
                         'type': 'redirect',
-                        'redirect': {'url': f"{settings.FRONTEND_URL}/dashboard/employer?enterprise=paid"},
+                        'redirect': {'url': f"{settings.FRONTEND_URL}/dashboard/employer?enterprise=paid&session_id={{CHECKOUT_SESSION_ID}}"},
                     },
                 )
                 payment_link_id = pl.id
@@ -653,11 +1082,13 @@ class AdminEnterpriseRequestApproveView(APIView):
         enterprise_request.approved_at = timezone.now()
         enterprise_request.save()
 
-        # Create or update CustomSubscriptionPlan
+        # Create or update CustomSubscriptionPlan, keyed by user so that a
+        # re-approval (after cancellation or a new request from the same user)
+        # updates the existing row instead of hitting the user unique-constraint.
         CustomSubscriptionPlan.objects.update_or_create(
-            enterprise_request=enterprise_request,
+            user=enterprise_request.user,
             defaults={
-                'user': enterprise_request.user,
+                'enterprise_request': enterprise_request,
                 'job_post_limit': custom_job_limit,
                 'price_monthly': price_amount,
                 'features': custom_features,
@@ -684,6 +1115,60 @@ class AdminEnterpriseRequestApproveView(APIView):
                 )
             except SubscriptionPlan.DoesNotExist:
                 pass
+
+        # ── Notify employer via email and in-app notification ─────────────────
+        employer_user = enterprise_request.user
+        if not is_free and payment_link_url:
+            # Email employer with payment link
+            from emails.tasks import send_custom_plan_payment_link_email_task
+            send_custom_plan_payment_link_email_task.delay(
+                employer_user.pk,
+                payment_link_url,
+                str(price_amount),
+                custom_job_limit,
+                custom_features,
+            )
+
+            # In-app notification for employer
+            from notifications.models import Notification
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            notif = Notification.objects.create(
+                user=employer_user,
+                notification_type='employer_custom_plan_payment',
+                title='Your Custom Plan Payment Link is Ready',
+                message=(
+                    f'Your enterprise plan has been approved! '
+                    f'Complete your payment of ${price_amount:.2f}/month to activate your custom plan '
+                    f'with {custom_job_limit} job postings.'
+                ),
+                link='/dashboard/employer?tab=billing',
+            )
+            try:
+                channel_layer = get_channel_layer()
+                async_to_sync(channel_layer.group_send)(
+                    f'notifications_{employer_user.pk}',
+                    {
+                        'type': 'notify',
+                        'id': notif.pk,
+                        'notification_type': notif.notification_type,
+                        'title': notif.title,
+                        'message': notif.message,
+                        'link': notif.link,
+                    },
+                )
+            except Exception:
+                pass
+        elif is_free:
+            # Notify employer that plan is immediately active
+            from notifications.models import Notification
+            Notification.objects.create(
+                user=employer_user,
+                notification_type='employer_custom_plan_active',
+                title='Your Custom Plan is Now Active!',
+                message=f'Your enterprise custom plan with {custom_job_limit} job postings is now active.',
+                link='/dashboard/employer?tab=billing',
+            )
 
         return success_response(
             data=EnterpriseRequestAdminSerializer(enterprise_request).data,
@@ -753,6 +1238,19 @@ class AdminEnterpriseRequestRevokeView(APIView):
                     )
                 payment.status = 'refunded'
                 payment.save(update_fields=['status'])
+
+            # Cancel the recurring Stripe subscription so the user is not charged again
+            try:
+                user_sub = UserSubscription.objects.get(user=enterprise_request.user)
+                if user_sub.stripe_subscription_id:
+                    try:
+                        s.Subscription.cancel(user_sub.stripe_subscription_id)
+                    except stripe.StripeError as e:
+                        logger.warning(
+                            'Could not cancel Stripe subscription during admin revoke for request=%s: %s', pk, e
+                        )
+            except UserSubscription.DoesNotExist:
+                pass
 
             # Downgrade UserSubscription to free plan
             try:

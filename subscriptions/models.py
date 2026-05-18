@@ -60,19 +60,18 @@ class EnterpriseRequest(models.Model):
         ('rejected', 'Rejected'),
         ('revoked', 'Revoked'),
     ]
-    VOLUME_CHOICES = [
-        ('1_5', '1-5 physicians/month'),
-        ('6_10', '6-10 physicians/month'),
-        ('11_20', '11-20 physicians/month'),
-        ('20_plus', '20+ physicians/month'),
-    ]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='enterprise_requests')
     employer_profile = models.ForeignKey('accounts.EmployerProfile', on_delete=models.CASCADE, related_name='enterprise_requests')
     organization_name = models.CharField(max_length=200)
     contact_name = models.CharField(max_length=100)
     contact_email = models.EmailField()
     contact_phone = models.CharField(max_length=20, blank=True)
-    monthly_hiring_volume = models.CharField(max_length=50, choices=VOLUME_CHOICES)
+    monthly_hiring_volume = models.CharField(max_length=100, blank=True)
+    num_job_posts = models.PositiveIntegerField(null=True, blank=True)
+    featured_jobs = models.PositiveIntegerField(null=True, blank=True)
+    hiring_duration = models.CharField(max_length=50, blank=True)
+    additional_services = models.TextField(blank=True)
+    budget_range = models.CharField(max_length=100, blank=True)
     message = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     custom_job_limit = models.IntegerField(null=True, blank=True)

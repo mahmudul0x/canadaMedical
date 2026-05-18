@@ -11,12 +11,18 @@ class Notification(models.Model):
         ('admin_assessment', 'New Assessment Submitted'),
         ('admin_contact',    'New Contact Message'),
         # Employer-targeted
-        ('employer_application',  'New Job Application'),
-        ('employer_job_approved', 'Job Approved'),
-        ('employer_job_rejected', 'Job Rejected'),
+        ('employer_application',           'New Job Application'),
+        ('employer_job_approved',          'Job Approved'),
+        ('employer_job_rejected',          'Job Rejected'),
+        ('employer_offer_accepted',        'Offer Accepted'),
+        ('employer_offer_declined',        'Offer Declined'),
+        ('employer_custom_plan_payment',   'Custom Plan Payment Link Ready'),
+        ('employer_custom_plan_active',    'Custom Plan Activated'),
         # Physician-targeted
         ('physician_app_status',          'Application Status Changed'),
         ('physician_assessment_status',   'Assessment Status Updated'),
+        # Admin-targeted (enterprise)
+        ('admin_enterprise_request',      'New Enterprise Plan Request'),
     ]
 
     user = models.ForeignKey(

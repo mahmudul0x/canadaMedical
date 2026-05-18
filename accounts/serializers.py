@@ -267,41 +267,67 @@ class PhysicianProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     first_name = serializers.CharField(source='user.first_name', read_only=True)
     last_name = serializers.CharField(source='user.last_name', read_only=True)
-    phone = serializers.CharField(source='user.phone', read_only=True)
+    phone = serializers.CharField(source='user.phone', read_only=True, allow_null=True)
     full_name = serializers.CharField(source='user.full_name', read_only=True)
+    avatar_url = serializers.SerializerMethodField()
+    resume_url = serializers.SerializerMethodField()
 
     class Meta:
         model = PhysicianProfile
         fields = [
             'id', 'email', 'first_name', 'last_name', 'full_name', 'phone',
+            'avatar_url', 'bio', 'years_of_experience', 'linkedin_url',
             'specialty', 'sub_specialty', 'cpso_number',
             'board_certifications', 'degrees',
-            'country', 'address', 'zip_code',
-            'work_eligibility', 'resume',
+            'address', 'city', 'province', 'country', 'zip_code',
+            'work_eligibility', 'resume', 'resume_url',
             'profile_complete', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'profile_complete', 'created_at', 'updated_at']
 
+    def _abs(self, file_field):
+        if not file_field:
+            return None
+        request = self.context.get('request')
+        return request.build_absolute_uri(file_field.url) if request else file_field.url
+
+    def get_avatar_url(self, obj):
+        return self._abs(obj.avatar)
+
+    def get_resume_url(self, obj):
+        return self._abs(obj.resume)
+
 
 class PhysicianProfileUpdateSerializer(serializers.ModelSerializer):
-    first_name = serializers.CharField(source='user.first_name', required=False)
-    last_name = serializers.CharField(source='user.last_name', required=False)
+    first_name = serializers.CharField(source='user.first_name', required=False, allow_blank=True)
+    last_name = serializers.CharField(source='user.last_name', required=False, allow_blank=True)
     phone = serializers.CharField(source='user.phone', required=False, allow_blank=True)
+    linkedin_url = serializers.URLField(required=False, allow_blank=True)
 
     class Meta:
         model = PhysicianProfile
         fields = [
             'first_name', 'last_name', 'phone',
+            'avatar', 'bio', 'years_of_experience', 'linkedin_url',
             'specialty', 'sub_specialty', 'cpso_number',
             'board_certifications', 'degrees',
-            'country', 'address', 'zip_code', 'work_eligibility',
+            'address', 'city', 'province', 'country', 'zip_code',
+            'work_eligibility',
         ]
+
+    def validate_linkedin_url(self, value):
+        if not value:
+            return value
+        if not value.startswith(('http://', 'https://')):
+            value = f'https://{value}'
+        return value
 
     def update(self, instance, validated_data):
         user_data = validated_data.pop('user', {})
         for attr, value in user_data.items():
             setattr(instance.user, attr, value)
-        instance.user.save()
+        if user_data:
+            instance.user.save(update_fields=list(user_data.keys()))
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -327,39 +353,57 @@ class EmployerProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     first_name = serializers.CharField(source='user.first_name', read_only=True)
     last_name = serializers.CharField(source='user.last_name', read_only=True)
-    phone = serializers.CharField(source='user.phone', read_only=True)
+    phone = serializers.CharField(source='user.phone', read_only=True, allow_null=True)
+    logo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = EmployerProfile
         fields = [
             'id', 'email', 'first_name', 'last_name', 'phone',
             'company_name', 'company_type', 'company_phone',
-            'address', 'country', 'zip_code',
+            'address', 'city', 'province', 'country', 'zip_code',
             'contact_person_first_name', 'contact_person_last_name',
-            'website', 'created_at', 'updated_at',
+            'website', 'logo_url', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def get_logo_url(self, obj):
+        if obj.logo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.logo.url)
+            return obj.logo.url
+        return None
+
 
 class EmployerProfileUpdateSerializer(serializers.ModelSerializer):
-    first_name = serializers.CharField(source='user.first_name', required=False)
-    last_name = serializers.CharField(source='user.last_name', required=False)
+    first_name = serializers.CharField(source='user.first_name', required=False, allow_blank=True)
+    last_name = serializers.CharField(source='user.last_name', required=False, allow_blank=True)
     phone = serializers.CharField(source='user.phone', required=False, allow_blank=True)
+    website = serializers.URLField(required=False, allow_blank=True)
 
     class Meta:
         model = EmployerProfile
         fields = [
             'first_name', 'last_name', 'phone',
             'company_name', 'company_type', 'company_phone',
-            'address', 'country', 'zip_code',
-            'contact_person_first_name', 'contact_person_last_name', 'website',
+            'address', 'city', 'province', 'country', 'zip_code',
+            'contact_person_first_name', 'contact_person_last_name',
+            'website', 'logo',
         ]
+
+    def validate_website(self, value):
+        if not value:
+            return value
+        if not value.startswith(('http://', 'https://')):
+            value = f'https://{value}'
+        return value
 
     def update(self, instance, validated_data):
         user_data = validated_data.pop('user', {})
         for attr, value in user_data.items():
             setattr(instance.user, attr, value)
-        instance.user.save()
+        instance.user.save(update_fields=list(user_data.keys()))
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)

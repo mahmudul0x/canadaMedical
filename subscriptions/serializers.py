@@ -61,43 +61,26 @@ class PaymentHistorySerializer(serializers.ModelSerializer):
 class EnterpriseRequestSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
     company_name = serializers.CharField(source='employer_profile.company_name', read_only=True)
+    custom_payment_status = serializers.SerializerMethodField()
+    custom_payment_link = serializers.SerializerMethodField()
+    admin_notes = serializers.CharField(read_only=True)
 
     class Meta:
         model = EnterpriseRequest
         fields = [
             'id', 'user_email', 'company_name',
             'organization_name', 'contact_name', 'contact_email', 'contact_phone',
-            'monthly_hiring_volume', 'message', 'status',
+            'monthly_hiring_volume', 'num_job_posts', 'featured_jobs',
+            'hiring_duration', 'additional_services', 'budget_range', 'message', 'status',
             'custom_job_limit', 'custom_price_monthly', 'custom_features',
             'admin_notes', 'approved_at', 'rejected_reason',
+            'custom_payment_status', 'custom_payment_link',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'user_email', 'company_name', 'status',
             'custom_job_limit', 'custom_price_monthly', 'custom_features',
             'admin_notes', 'approved_at', 'rejected_reason',
-            'created_at', 'updated_at',
-        ]
-
-
-class EnterpriseRequestAdminSerializer(serializers.ModelSerializer):
-    user_email = serializers.EmailField(source='user.email', read_only=True)
-    company_name = serializers.CharField(source='employer_profile.company_name', read_only=True)
-    approved_by_email = serializers.EmailField(source='approved_by.email', read_only=True, allow_null=True)
-    revoked_by_email = serializers.EmailField(source='revoked_by.email', read_only=True, allow_null=True)
-    monthly_hiring_volume_display = serializers.CharField(source='get_monthly_hiring_volume_display', read_only=True)
-    custom_payment_status = serializers.SerializerMethodField()
-    custom_payment_link = serializers.SerializerMethodField()
-
-    class Meta:
-        model = EnterpriseRequest
-        fields = [
-            'id', 'user_email', 'company_name',
-            'organization_name', 'contact_name', 'contact_email', 'contact_phone',
-            'monthly_hiring_volume', 'monthly_hiring_volume_display', 'message', 'status',
-            'custom_job_limit', 'custom_price_monthly', 'custom_features',
-            'admin_notes', 'approved_by_email', 'approved_at', 'rejected_reason',
-            'revoked_by_email', 'revoked_at',
             'custom_payment_status', 'custom_payment_link',
             'created_at', 'updated_at',
         ]
@@ -111,6 +94,72 @@ class EnterpriseRequestAdminSerializer(serializers.ModelSerializer):
     def get_custom_payment_link(self, obj):
         try:
             return obj.custom_plan.stripe_payment_link_url or None
+        except Exception:
+            return None
+
+
+class EnterpriseRequestAdminSerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    company_name = serializers.CharField(source='employer_profile.company_name', read_only=True)
+    approved_by_email = serializers.EmailField(source='approved_by.email', read_only=True, allow_null=True)
+    revoked_by_email = serializers.EmailField(source='revoked_by.email', read_only=True, allow_null=True)
+    monthly_hiring_volume_display = serializers.CharField(source='monthly_hiring_volume', read_only=True)
+    custom_payment_status = serializers.SerializerMethodField()
+    custom_payment_link = serializers.SerializerMethodField()
+    existing_plan_info = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EnterpriseRequest
+        fields = [
+            'id', 'user_email', 'company_name',
+            'organization_name', 'contact_name', 'contact_email', 'contact_phone',
+            'monthly_hiring_volume', 'monthly_hiring_volume_display',
+            'num_job_posts', 'featured_jobs', 'hiring_duration',
+            'additional_services', 'budget_range', 'message', 'status',
+            'custom_job_limit', 'custom_price_monthly', 'custom_features',
+            'admin_notes', 'approved_by_email', 'approved_at', 'rejected_reason',
+            'revoked_by_email', 'revoked_at',
+            'custom_payment_status', 'custom_payment_link',
+            'existing_plan_info',
+            'created_at', 'updated_at',
+        ]
+
+    def get_custom_payment_status(self, obj):
+        try:
+            return obj.custom_plan.payment_status
+        except Exception:
+            return None
+
+    def get_custom_payment_link(self, obj):
+        try:
+            return obj.custom_plan.stripe_payment_link_url or None
+        except Exception:
+            return None
+
+    def get_existing_plan_info(self, obj):
+        """Return the employer's currently active paid plan (if any) so the
+        admin can see unused value and set a fair discounted price."""
+        try:
+            cp = obj.user.custom_plan
+            if not cp.is_active or cp.payment_status != 'paid':
+                return None
+            days_remaining = None
+            estimated_unused_value = None
+            if cp.valid_until:
+                delta = cp.valid_until.date() - timezone.now().date()
+                days_remaining = max(0, delta.days)
+                if cp.price_monthly and days_remaining > 0:
+                    # Approximate: 1 month ≈ 30 days
+                    estimated_unused_value = round(float(cp.price_monthly) * days_remaining / 30, 2)
+            return {
+                'job_post_limit': cp.job_post_limit,
+                'price_monthly': str(cp.price_monthly),
+                'valid_until': cp.valid_until.isoformat() if cp.valid_until else None,
+                'days_remaining': days_remaining,
+                'estimated_unused_value': estimated_unused_value,
+                'payment_status': cp.payment_status,
+                'enterprise_request_id': cp.enterprise_request_id,
+            }
         except Exception:
             return None
 

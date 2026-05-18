@@ -1,5 +1,4 @@
 import logging
-import smtplib
 
 from django.contrib.auth import get_user_model
 
@@ -7,8 +6,9 @@ logger = logging.getLogger(__name__)
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
-from django.core.mail import send_mail
 from django.conf import settings
+
+from emails.tasks import send_welcome_email_task, send_password_reset_email_task
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -56,6 +56,7 @@ class PhysicianRegisterView(APIView):
         serializer = PhysicianRegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        send_welcome_email_task.delay(user.pk)
         refresh = RefreshToken.for_user(user)
         return success_response(
             data={
@@ -87,6 +88,7 @@ class EmployerRegisterView(APIView):
         serializer = EmployerRegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        send_welcome_email_task.delay(user.pk)
         refresh = RefreshToken.for_user(user)
         return success_response(
             data={
@@ -211,7 +213,7 @@ class PhysicianProfileView(APIView):
             profile = request.user.physician_profile
         except PhysicianProfile.DoesNotExist:
             return success_response(message='Profile not found.', status_code=status.HTTP_404_NOT_FOUND)
-        serializer = PhysicianProfileSerializer(profile)
+        serializer = PhysicianProfileSerializer(profile, context={'request': request})
         return success_response(data=serializer.data)
 
     def put(self, request):
@@ -223,8 +225,8 @@ class PhysicianProfileView(APIView):
         serializer.is_valid(raise_exception=True)
         updated = serializer.save()
         return success_response(
-            data=PhysicianProfileSerializer(updated).data,
-            message='Physician profile updated.',
+            data=PhysicianProfileSerializer(updated, context={'request': request}).data,
+            message='Profile updated successfully.',
         )
 
 
@@ -284,20 +286,20 @@ class EmployerProfileView(APIView):
             profile = request.user.employer_profile
         except EmployerProfile.DoesNotExist:
             return success_response(message='Profile not found.', status_code=status.HTTP_404_NOT_FOUND)
-        serializer = EmployerProfileSerializer(profile)
+        serializer = EmployerProfileSerializer(profile, context={'request': request})
         return success_response(data=serializer.data)
 
     def put(self, request):
         try:
             profile = request.user.employer_profile
         except EmployerProfile.DoesNotExist:
-            return success_response(data={}, message='Employer profile not found.')
+            return success_response(message='Employer profile not found.', status_code=status.HTTP_404_NOT_FOUND)
         serializer = EmployerProfileUpdateSerializer(profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         updated = serializer.save()
         return success_response(
-            data=EmployerProfileSerializer(updated).data,
-            message='Employer profile updated.',
+            data=EmployerProfileSerializer(updated, context={'request': request}).data,
+            message='Profile updated successfully.',
         )
 
 
@@ -326,20 +328,7 @@ class PasswordResetRequestView(APIView):
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
         reset_url = f"{settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}"
-        try:
-            send_mail(
-                subject='Password Reset Request',
-                message=(
-                    f'Click the link below to reset your password:\n\n'
-                    f'{reset_url}\n\n'
-                    f'This link expires in 24 hours.'
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[email],
-                fail_silently=False,
-            )
-        except (smtplib.SMTPException, ConnectionError, TimeoutError, OSError) as exc:
-            logger.error('Failed to send password reset email to %s: %s', email, exc)
+        send_password_reset_email_task.delay(user.pk, reset_url)
         return success_response(message=generic_msg)
 
 
@@ -361,3 +350,71 @@ class PasswordResetConfirmView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return success_response(message='Password reset successful. You can now log in.')
+
+
+class ChangePasswordView(APIView):
+    """
+    Authenticated user changes their own password.
+    Requires current password for verification, then sets a new one
+    and blacklists the refresh token so the user must re-login.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        current_password = request.data.get('current_password', '')
+        new_password = request.data.get('new_password', '')
+        confirm_password = request.data.get('confirm_password', '')
+
+        if not current_password or not new_password or not confirm_password:
+            return success_response(
+                message='All fields are required.',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not request.user.check_password(current_password):
+            return success_response(
+                message='Current password is incorrect.',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if new_password != confirm_password:
+            return success_response(
+                message='New passwords do not match.',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(new_password) < 8:
+            return success_response(
+                message='New password must be at least 8 characters.',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if current_password == new_password:
+            return success_response(
+                message='New password must be different from your current password.',
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate password strength using the same helper as registration
+        from .serializers import validate_password_strength
+        from rest_framework import serializers as drf_serializers
+        try:
+            validate_password_strength(new_password)
+        except drf_serializers.ValidationError as exc:
+            msg = exc.detail[0] if isinstance(exc.detail, list) else str(exc.detail)
+            return success_response(message=str(msg), status_code=status.HTTP_400_BAD_REQUEST)
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password'])
+
+        # Blacklist the current refresh token so existing sessions are invalidated
+        refresh_token = request.data.get('refresh_token', '')
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except TokenError:
+                pass
+
+        logger.info('User %s changed their password.', request.user.email)
+        return success_response(message='Password changed successfully. Please log in again.')

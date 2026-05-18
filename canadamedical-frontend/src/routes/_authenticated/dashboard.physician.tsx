@@ -1,12 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Briefcase, Bookmark, User as UserIcon, Settings as SettingsIcon,
   LayoutDashboard, FileText, CheckCircle2, Clock, Star, Trash2, ExternalLink,
   LogOut, Home, PanelLeftClose, PanelLeftOpen,
   ChevronDown, ChevronUp, MapPin, Building2, Calendar, Phone, Linkedin,
-  AlertTriangle, XCircle, Award, Search, Printer, Loader2,
+  AlertTriangle, XCircle, Award, Search, Printer, Loader2, ThumbsUp, ThumbsDown,
+  Pencil, Globe, Stethoscope, GraduationCap, FileCheck,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
@@ -14,27 +15,34 @@ import { api, apiError } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { Field, Input, Select, SubmitButton } from "@/components/site/Form";
 import { SPECIALTIES, PROVINCES } from "@/data/jobs";
+import { useSubSpecialties } from "@/hooks/useSubSpecialties";
 import { Logo } from "@/components/site/Logo";
 import { NotificationBell } from "@/components/site/NotificationBell";
 
 export const Route = createFileRoute("/_authenticated/dashboard/physician")({
   head: () => ({ meta: [{ title: "Physician Dashboard — MedConnect Canada" }] }),
+  validateSearch: (s: Record<string, unknown>): { tab?: string; app?: string } => ({
+    tab: typeof s.tab === "string" ? s.tab : undefined,
+    app: typeof s.app === "string" ? s.app : undefined,
+  }),
   component: PhysicianDashboard,
 });
 
 type Tab = "overview" | "applications" | "saved" | "profile" | "settings";
 
 const STATUS_STEPS = ["pending", "reviewed", "shortlisted", "interview", "offered"] as const;
-type AppStatus = "pending" | "reviewed" | "shortlisted" | "interview" | "offered" | "rejected" | "withdrawn";
+type AppStatus = "pending" | "reviewed" | "shortlisted" | "interview" | "offered" | "accepted" | "offer_declined" | "rejected" | "withdrawn";
 
 const STATUS_META: Record<AppStatus, { label: string; color: string; bg: string; icon: React.ComponentType<{ className?: string }> }> = {
-  pending:     { label: "Pending",     color: "text-amber-700",   bg: "bg-amber-100",   icon: Clock },
-  reviewed:    { label: "Reviewed",    color: "text-blue-700",    bg: "bg-blue-100",    icon: Search },
-  shortlisted: { label: "Shortlisted", color: "text-violet-700",  bg: "bg-violet-100",  icon: Star },
-  interview:   { label: "Interview",   color: "text-indigo-700",  bg: "bg-indigo-100",  icon: Calendar },
-  offered:     { label: "Offered",     color: "text-emerald-700", bg: "bg-emerald-100", icon: Award },
-  rejected:    { label: "Rejected",    color: "text-rose-700",    bg: "bg-rose-100",    icon: XCircle },
-  withdrawn:   { label: "Withdrawn",   color: "text-slate-500",   bg: "bg-slate-100",   icon: AlertTriangle },
+  pending:       { label: "Pending",        color: "text-amber-700",   bg: "bg-amber-100",   icon: Clock },
+  reviewed:      { label: "Reviewed",       color: "text-blue-700",    bg: "bg-blue-100",    icon: Search },
+  shortlisted:   { label: "Shortlisted",    color: "text-violet-700",  bg: "bg-violet-100",  icon: Star },
+  interview:     { label: "Interview",      color: "text-indigo-700",  bg: "bg-indigo-100",  icon: Calendar },
+  offered:       { label: "Offer Received", color: "text-amber-700",   bg: "bg-amber-100",   icon: Award },
+  accepted:      { label: "Hired!",         color: "text-emerald-700", bg: "bg-emerald-100", icon: CheckCircle2 },
+  offer_declined:{ label: "Offer Declined", color: "text-slate-600",   bg: "bg-slate-100",   icon: XCircle },
+  rejected:      { label: "Rejected",       color: "text-rose-700",    bg: "bg-rose-100",    icon: XCircle },
+  withdrawn:     { label: "Withdrawn",      color: "text-slate-500",   bg: "bg-slate-100",   icon: AlertTriangle },
 };
 
 const TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -56,6 +64,7 @@ interface Application {
   applied_at?: string;
   updated_at?: string;
   cover_letter?: string;
+  employer_notes?: string;
   resume_url?: string;
   profile_resume_url?: string;
   phone?: string;
@@ -127,10 +136,37 @@ function StatusTimeline({ status }: { status?: AppStatus }) {
 }
 
 function PhysicianDashboard() {
-  const [tab, setTab] = useState<Tab>("overview");
+  const VALID_TABS: Tab[] = ["overview", "applications", "saved", "profile", "settings"];
+  const { tab: tabParam, app: appParam } = Route.useSearch();
+  const [tab, setTab] = useState<Tab>(
+    VALID_TABS.includes(tabParam as Tab) ? (tabParam as Tab) : "overview"
+  );
+  const [openAppId, setOpenAppId] = useState<string | undefined>(appParam);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+
+  // Fetch physician profile so topbar + sidebar show uploaded avatar
+  const { data: physicianProfile } = useQuery<{ avatar_url?: string | null; specialty?: string }>({
+    queryKey: ["physician-profile"],
+    queryFn: async () => {
+      const r = await api.get("/api/profile/physician/");
+      return r.data?.data ?? r.data ?? {};
+    },
+    staleTime: 60_000,
+  });
+  const avatarUrl = physicianProfile?.avatar_url ?? null;
+  const displaySpecialty = physicianProfile?.specialty
+    ? SPECIALTIES.find(s => s.value === physicianProfile.specialty)?.label ?? physicianProfile.specialty
+    : "Physician";
+
+  useEffect(() => {
+    if (tabParam && VALID_TABS.includes(tabParam as Tab)) {
+      setTab(tabParam as Tab);
+      if (appParam) setOpenAppId(appParam);
+      navigate({ to: "/dashboard/physician", replace: true } as never);
+    }
+  }, [tabParam, appParam]);
 
   const currentTab = TABS.find((t) => t.id === tab) ?? TABS[0];
 
@@ -167,21 +203,18 @@ function PhysicianDashboard() {
               <Home className="h-3.5 w-3.5" /> Home
             </Link>
             <NotificationBell role="physician" />
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5">
-              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-accent text-xs font-bold text-primary">
-                {(user?.email ?? "P").slice(0, 1).toUpperCase()}
-              </span>
-              <div className="hidden text-xs sm:block">
-                <div className="font-semibold text-foreground leading-tight">
-                  Dr. {user?.first_name || user?.email}
-                </div>
-              </div>
-            </div>
             <button
-              onClick={handleLogout}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground/70 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600"
+              type="button"
+              onClick={() => setTab("profile")}
+              title="Edit profile"
+              className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 transition hover:bg-secondary"
             >
-              <LogOut className="h-3.5 w-3.5" /> Log out
+              <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-md bg-gradient-accent text-xs font-bold text-primary">
+                {avatarUrl
+                  ? <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                  : (user?.first_name ?? user?.email ?? "P").slice(0, 1).toUpperCase()
+                }
+              </span>
             </button>
           </div>
         </div>
@@ -193,13 +226,16 @@ function PhysicianDashboard() {
         <aside className={`hidden flex-none overflow-hidden border-r border-border bg-card shadow-sm transition-[width] duration-300 lg:flex lg:flex-col ${sidebarOpen ? "w-64" : "w-0 border-r-0"}`}>
           <div className={`flex-1 overflow-y-auto transition-opacity duration-300 ${sidebarOpen ? "opacity-100 p-4" : "opacity-0"}`}>
           <div className="mb-5 rounded-xl bg-linear-to-br from-primary/10 to-accent/10 p-4 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md">
-              <UserIcon className="h-7 w-7" />
+            <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground shadow-md">
+              {avatarUrl
+                ? <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                : <UserIcon className="h-7 w-7" />
+              }
             </div>
             <p className="mt-2 text-sm font-bold text-primary">
               Dr. {user?.first_name ?? user?.email}
             </p>
-            <p className="text-xs text-muted-foreground">{(user?.specialty as string) ?? "Physician"}</p>
+            <p className="text-xs text-muted-foreground">{displaySpecialty}</p>
           </div>
           <nav className="space-y-1">
             {TABS.map((t) => {
@@ -221,13 +257,22 @@ function PhysicianDashboard() {
             })}
           </nav>
           </div>
+          {/* Logout pinned to sidebar bottom */}
+          <div className="shrink-0 border-t border-border p-4">
+            <button
+              onClick={handleLogout}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground/70 transition hover:bg-rose-50 hover:text-rose-600"
+            >
+              <LogOut className="h-4 w-4 flex-none" /> Log out
+            </button>
+          </div>
         </aside>
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto px-4 py-8 lg:px-8">
           <div className="space-y-6">
           {tab === "overview" && <OverviewTab />}
-          {tab === "applications" && <ApplicationsTab />}
+          {tab === "applications" && <ApplicationsTab openAppId={openAppId} onAppOpened={() => setOpenAppId(undefined)} />}
           {tab === "saved" && <SavedTab />}
           {tab === "profile" && <ProfileTab />}
           {tab === "settings" && <SettingsTab />}
@@ -300,7 +345,7 @@ function OverviewTab() {
   );
 }
 
-function ApplicationsTab() {
+function ApplicationsTab({ openAppId, onAppOpened }: { openAppId?: string; onAppOpened?: () => void }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery<Application[]>({
     queryKey: ["my-applications"],
@@ -317,8 +362,30 @@ function ApplicationsTab() {
     onError: (e) => toast.error(apiError(e)),
   });
 
+  const respondOffer = useMutation({
+    mutationFn: ({ appId, action }: { appId: number | string; action: "accept" | "decline" }) =>
+      api.post(`/api/jobs/applications/${appId}/respond-offer/`, { action }),
+    onSuccess: (_, { action }) => {
+      toast.success(action === "accept" ? "Congratulations! You accepted the offer." : "You declined the offer.");
+      qc.invalidateQueries({ queryKey: ["my-applications"] });
+    },
+    onError: (e) => toast.error(apiError(e)),
+  });
+
   const [expanded, setExpanded] = useState<Set<number | string>>(new Set());
   const [withdrawing, setWithdrawing] = useState<number | string | null>(null);
+
+  // Auto-expand and scroll to the application linked from a notification
+  useEffect(() => {
+    if (!openAppId || !data || data.length === 0) return;
+    const numId = Number(openAppId);
+    const id: number | string = isNaN(numId) ? openAppId : numId;
+    setExpanded((prev) => { const next = new Set(prev); next.add(id); return next; });
+    onAppOpened?.();
+    setTimeout(() => {
+      document.getElementById(`app-card-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+  }, [openAppId, data]);
 
   function toggleExpand(id: number | string) {
     setExpanded((prev) => {
@@ -342,14 +409,15 @@ function ApplicationsTab() {
   }
 
   const list = data ?? [];
-  const active = list.filter((a) => a.status !== "rejected" && a.status !== "withdrawn");
-  const closed = list.filter((a) => a.status === "rejected" || a.status === "withdrawn");
+  const TERMINAL = ["rejected", "withdrawn", "accepted", "offer_declined"] as const;
+  const active = list.filter((a) => !TERMINAL.includes(a.status as typeof TERMINAL[number]));
+  const closed = list.filter((a) => TERMINAL.includes(a.status as typeof TERMINAL[number]));
 
   return (
     <div className="space-y-6">
       {/* Stats row */}
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {(["pending", "reviewed", "shortlisted", "interview", "offered", "rejected"] as AppStatus[]).map((s) => {
+      <div className="grid gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        {(["pending", "reviewed", "shortlisted", "interview", "offered", "accepted", "offer_declined", "rejected"] as AppStatus[]).map((s) => {
           const count = list.filter((a) => a.status === s || (!a.status && s === "pending")).length;
           const meta = STATUS_META[s];
           const Icon = meta.icon;
@@ -381,6 +449,8 @@ function ApplicationsTab() {
                     onToggle={() => toggleExpand(app.id)}
                     onWithdraw={() => handleWithdraw(app)}
                     withdrawing={withdrawing === app.id}
+                    onRespondOffer={(action) => respondOffer.mutate({ appId: app.id, action })}
+                    respondingOffer={respondOffer.isPending && respondOffer.variables?.appId === app.id}
                   />
                 ))}
               </div>
@@ -398,6 +468,8 @@ function ApplicationsTab() {
                     onToggle={() => toggleExpand(app.id)}
                     onWithdraw={() => handleWithdraw(app)}
                     withdrawing={withdrawing === app.id}
+                    onRespondOffer={(action) => respondOffer.mutate({ appId: app.id, action })}
+                    respondingOffer={respondOffer.isPending && respondOffer.variables?.appId === app.id}
                   />
                 ))}
               </div>
@@ -410,15 +482,18 @@ function ApplicationsTab() {
 }
 
 function ApplicationCard({
-  app, expanded, onToggle, onWithdraw, withdrawing,
+  app, expanded, onToggle, onWithdraw, withdrawing, onRespondOffer, respondingOffer,
 }: {
   app: Application;
   expanded: boolean;
   onToggle: () => void;
   onWithdraw: () => void;
   withdrawing: boolean;
+  onRespondOffer: (action: "accept" | "decline") => void;
+  respondingOffer: boolean;
 }) {
-  const isClosed = app.status === "rejected" || app.status === "withdrawn";
+  const isOffered = app.status === "offered";
+  const isClosed = ["rejected", "withdrawn", "accepted", "offer_declined"].includes(app.status ?? "");
   const resumeUrl = app.resume_url ?? app.profile_resume_url;
   const [downloading, setDownloading] = useState(false);
 
@@ -449,7 +524,7 @@ function ApplicationCard({
   }
 
   return (
-    <article className={`rounded-2xl border bg-card shadow-sm transition-shadow hover:shadow-md ${isClosed ? "border-border opacity-75" : "border-border"}`}>
+    <article id={`app-card-${app.id}`} className={`rounded-2xl border bg-card shadow-sm transition-shadow hover:shadow-md ${isClosed ? "border-border opacity-75" : "border-border"}`}>
       {/* Card header — always visible */}
       <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-start">
         <div className="flex-1 min-w-0">
@@ -475,12 +550,43 @@ function ApplicationCard({
         </div>
 
         {/* Action buttons */}
-        <div className="flex shrink-0 items-center gap-2">
-          {!isClosed && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {/* Offer response buttons — shown only when status is "offered" */}
+          {isOffered && (
+            <>
+              <button
+                onClick={() => onRespondOffer("accept")}
+                disabled={respondingOffer}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {respondingOffer ? (
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                ) : (
+                  <ThumbsUp className="h-3.5 w-3.5" />
+                )}
+                Accept Offer
+              </button>
+              <button
+                onClick={() => onRespondOffer("decline")}
+                disabled={respondingOffer}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {respondingOffer ? (
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-rose-400 border-t-transparent" />
+                ) : (
+                  <ThumbsDown className="h-3.5 w-3.5" />
+                )}
+                Decline
+              </button>
+            </>
+          )}
+
+          {/* Withdraw — only for non-offered, non-closed */}
+          {!isClosed && !isOffered && (
             <button
               onClick={onWithdraw}
-              disabled={withdrawing || app.status === "offered"}
-              title={app.status === "offered" ? "Cannot withdraw an offered application" : "Withdraw application"}
+              disabled={withdrawing}
+              title="Withdraw application"
               className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {withdrawing ? (
@@ -521,8 +627,24 @@ function ApplicationCard({
         </div>
       </div>
 
-      {/* Status timeline (only for active) */}
-      {!isClosed && (
+      {/* Offer received banner */}
+      {isOffered && (
+        <div className="border-t border-amber-200 bg-amber-50 px-5 py-3">
+          <p className="mb-1 text-xs font-bold text-amber-800 uppercase tracking-wider">You have received a job offer!</p>
+          <p className="text-xs text-amber-700">Review the details below and accept or decline. You can hold multiple offers — accepting one does not affect your other applications.</p>
+        </div>
+      )}
+
+      {/* Hired banner */}
+      {app.status === "accepted" && (
+        <div className="border-t border-emerald-200 bg-emerald-50 px-5 py-3 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+          <p className="text-xs font-bold text-emerald-800">You accepted this offer — congratulations on your new position!</p>
+        </div>
+      )}
+
+      {/* Status timeline (only for non-offered, non-terminal active) */}
+      {!isClosed && !isOffered && (
         <div className="border-t border-border bg-secondary/30 px-5 py-3">
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Application Progress</p>
           <StatusTimeline status={app.status} />
@@ -579,6 +701,16 @@ function ApplicationCard({
               </a>
             )}
           </div>
+
+          {/* Employer notes */}
+          {app.employer_notes && (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Employer Notes</p>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 whitespace-pre-line leading-relaxed">
+                {app.employer_notes}
+              </div>
+            </div>
+          )}
 
           {/* Cover letter */}
           {app.cover_letter && (
@@ -695,23 +827,167 @@ function SavedTab() {
   );
 }
 
+interface PhysicianProfileData {
+  id?: number;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  phone?: string;
+  avatar_url?: string | null;
+  bio?: string;
+  years_of_experience?: number | null;
+  linkedin_url?: string;
+  specialty?: string;
+  sub_specialty?: string;
+  cpso_number?: string;
+  board_certifications?: string;
+  degrees?: string;
+  address?: string;
+  city?: string;
+  province?: string;
+  country?: string;
+  zip_code?: string;
+  work_eligibility?: boolean;
+  resume?: string;
+  resume_url?: string | null;
+  profile_complete?: boolean;
+}
+
+function PhysicianSectionHeader({ icon: Icon, title, subtitle }: { icon: React.ComponentType<{ className?: string }>; title: string; subtitle: string }) {
+  return (
+    <div className="flex items-center gap-3 pb-4 border-b border-border">
+      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+        <Icon className="h-4 w-4 text-primary" />
+      </div>
+      <div>
+        <p className="text-sm font-bold text-foreground">{title}</p>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
 function ProfileTab() {
-  const { data, isLoading } = useQuery({
+  const qc = useQueryClient();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const resumeInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: serverData, isLoading } = useQuery<PhysicianProfileData>({
     queryKey: ["physician-profile"],
-    queryFn: async () => { const r = await api.get("/api/profile/physician/"); return r.data?.data ?? r.data ?? {}; },
-    retry: 1,
+    queryFn: async () => {
+      const r = await api.get("/api/profile/physician/");
+      return r.data?.data ?? r.data ?? {};
+    },
+    staleTime: 60_000,
   });
-  const [form, setForm] = useState<Record<string, string>>({});
+
+  const [form, setForm] = useState<Partial<PhysicianProfileData>>({});
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [resumeUploading, setResumeUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const merged = { ...(data ?? {}), ...form };
+  // Seed form from server on first load
+  useEffect(() => {
+    if (serverData && Object.keys(form).length === 0) {
+      setForm({
+        first_name: serverData.first_name ?? "",
+        last_name: serverData.last_name ?? "",
+        phone: serverData.phone ?? "",
+        bio: serverData.bio ?? "",
+        years_of_experience: serverData.years_of_experience ?? undefined,
+        linkedin_url: serverData.linkedin_url ?? "",
+        specialty: serverData.specialty ?? "",
+        sub_specialty: serverData.sub_specialty ?? "",
+        cpso_number: serverData.cpso_number ?? "",
+        board_certifications: serverData.board_certifications ?? "",
+        degrees: serverData.degrees ?? "",
+        address: serverData.address ?? "",
+        city: serverData.city ?? "",
+        province: serverData.province ?? "",
+        country: serverData.country ?? "Canada",
+        zip_code: serverData.zip_code ?? "",
+        work_eligibility: serverData.work_eligibility ?? false,
+      });
+    }
+  }, [serverData]);
 
-  async function handleSave(e: React.FormEvent) {
+  const { data: subSpecialties = [] } = useSubSpecialties(form.specialty || undefined);
+
+  const isDirty = avatarFile != null || Object.keys(form).some(key => {
+    const k = key as keyof PhysicianProfileData;
+    return (form[k] ?? "") !== ((serverData?.[k] ?? "") as string | boolean | number);
+  });
+
+  function set<K extends keyof PhysicianProfileData>(key: K, value: PhysicianProfileData[K]) {
+    setForm(prev => ({ ...prev, [key]: value }));
+    if (errors[key as string]) setErrors(prev => { const e = { ...prev }; delete e[key as string]; return e; });
+  }
+
+  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast.error("Avatar must be under 2 MB"); return; }
+    if (!file.type.startsWith("image/")) { toast.error("Please select an image file"); return; }
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  }
+
+  async function handleResumeUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error("Resume must be under 5 MB"); return; }
+    setResumeUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("resume", file);
+      await api.post("/api/profile/physician/resume/", fd, {
+        headers: { "Content-Type": undefined as unknown as string },
+      });
+      await qc.invalidateQueries({ queryKey: ["physician-profile"] });
+      toast.success("Resume uploaded successfully");
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setResumeUploading(false);
+      if (resumeInputRef.current) resumeInputRef.current.value = "";
+    }
+  }
+
+  function validate(): boolean {
+    const errs: Record<string, string> = {};
+    if (!form.first_name?.trim()) errs.first_name = "First name is required";
+    if (!form.last_name?.trim()) errs.last_name = "Last name is required";
+    if (!form.specialty) errs.specialty = "Specialty is required";
+    if (form.zip_code && !/^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/.test(form.zip_code)) {
+      errs.zip_code = "Enter a valid Canadian postal code (e.g. M5V 3L9)";
+    }
+    if (form.years_of_experience !== undefined && form.years_of_experience !== null) {
+      const yr = Number(form.years_of_experience);
+      if (isNaN(yr) || yr < 0 || yr > 60) errs.years_of_experience = "Enter a valid number (0–60)";
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!validate()) return;
     setSaving(true);
     try {
-      await api.put("/api/profile/physician/", merged);
-      toast.success("Profile updated");
+      const payload = new FormData();
+      Object.entries(form).forEach(([k, v]) => {
+        if (v !== undefined && v !== null) payload.append(k, String(v));
+      });
+      if (avatarFile) payload.append("avatar", avatarFile);
+      await api.put("/api/profile/physician/", payload, {
+        headers: { "Content-Type": undefined as unknown as string },
+      });
+      await qc.invalidateQueries({ queryKey: ["physician-profile"] });
+      setAvatarFile(null);
+      toast.success("Profile updated successfully");
     } catch (err) {
       toast.error(apiError(err));
     } finally {
@@ -719,74 +995,356 @@ function ProfileTab() {
     }
   }
 
+  const avatarSrc = avatarPreview ?? serverData?.avatar_url ?? null;
+  const initials = [form.first_name, form.last_name]
+    .filter(Boolean).map(s => s![0]).join("").toUpperCase() || "Dr";
+
   if (isLoading) {
     return (
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <SkeletonRows />
+      <div className="space-y-4">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <div className="space-y-3">
+              <div className="h-5 w-40 animate-pulse rounded-lg bg-secondary" />
+              <div className="grid grid-cols-2 gap-3">
+                {[1, 2, 3, 4].map(j => <div key={j} className="h-10 animate-pulse rounded-lg bg-secondary" />)}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSave} className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-      <h2 className="text-lg font-bold text-primary">My Profile</h2>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="First Name"><Input value={merged.first_name ?? ""} onChange={(e) => setForm({ ...form, first_name: e.target.value })} /></Field>
-        <Field label="Last Name"><Input value={merged.last_name ?? ""} onChange={(e) => setForm({ ...form, last_name: e.target.value })} /></Field>
-        <Field label="Email"><Input type="email" value={merged.email ?? ""} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-        <Field label="Phone"><Input type="tel" value={merged.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-        <Field label="Specialty">
-          <Select value={merged.specialty ?? ""} onChange={(e) => setForm({ ...form, specialty: e.target.value })}>
-            <option value="">Select specialty…</option>
-            {SPECIALTIES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </Select>
-        </Field>
-        <Field label="CPSO Number"><Input value={merged.cpso_number ?? ""} onChange={(e) => setForm({ ...form, cpso_number: e.target.value })} /></Field>
-        <Field label="City"><Input value={merged.city ?? ""} onChange={(e) => setForm({ ...form, city: e.target.value })} /></Field>
-        <Field label="Province">
-          <Select value={merged.province ?? ""} onChange={(e) => setForm({ ...form, province: e.target.value })}>
-            <option value="">Select province…</option>
-            {PROVINCES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-          </Select>
-        </Field>
+    <form onSubmit={handleSubmit} className="space-y-5">
+
+      {/* ── Avatar + header ───────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div className="flex items-center gap-5 flex-wrap">
+          <div className="relative group shrink-0">
+            <div className="h-20 w-20 rounded-full border-2 border-border overflow-hidden bg-secondary flex items-center justify-center">
+              {avatarSrc
+                ? <img src={avatarSrc} alt="Avatar" className="h-full w-full object-cover" />
+                : <span className="text-2xl font-bold text-muted-foreground">{initials}</span>
+              }
+            </div>
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              <Pencil className="h-5 w-5 text-white" />
+            </button>
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-foreground text-lg">
+              Dr. {[form.first_name, form.last_name].filter(Boolean).join(" ") || "Your Name"}
+            </p>
+            <p className="text-sm text-muted-foreground">{serverData?.email}</p>
+            {serverData?.profile_complete && (
+              <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                <CheckCircle2 className="h-3 w-3" /> Profile complete
+              </span>
+            )}
+            {!serverData?.profile_complete && (
+              <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                <AlertTriangle className="h-3 w-3" /> Incomplete profile
+              </span>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              {avatarSrc ? "Change photo" : "Upload photo"} · Max 2 MB
+            </button>
+            {isDirty && (
+              <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-700">
+                <AlertTriangle className="h-3.5 w-3.5" /> Unsaved changes
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-      <Field label="Resume / CV (PDF, DOC)">
-        <Input
-          type="file"
-          accept=".pdf,.doc,.docx"
-          onChange={async (e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            const fd = new FormData();
-            fd.append("resume", f);
-            try {
-              await api.post("/api/profile/physician/resume/", fd, {
-                headers: { "Content-Type": "multipart/form-data" },
-              });
-              toast.success("Resume uploaded");
-            } catch (err) {
-              toast.error(apiError(err));
-            }
-          }}
-        />
-      </Field>
-      <SubmitButton loading={saving}>Save Changes</SubmitButton>
+
+      {/* ── Personal info ─────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+        <PhysicianSectionHeader icon={UserIcon} title="Personal Information" subtitle="Your name, contact and short bio" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              First Name <span className="text-rose-500">*</span>
+            </label>
+            <input value={form.first_name ?? ""} onChange={e => set("first_name", e.target.value)} placeholder="Jane"
+              className={`w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${errors.first_name ? "border-rose-400 focus:ring-rose-200" : "border-border focus:border-primary focus:ring-primary/15"}`} />
+            {errors.first_name && <p className="mt-1 text-xs text-rose-500">{errors.first_name}</p>}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              Last Name <span className="text-rose-500">*</span>
+            </label>
+            <input value={form.last_name ?? ""} onChange={e => set("last_name", e.target.value)} placeholder="Smith"
+              className={`w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${errors.last_name ? "border-rose-400 focus:ring-rose-200" : "border-border focus:border-primary focus:ring-primary/15"}`} />
+            {errors.last_name && <p className="mt-1 text-xs text-rose-500">{errors.last_name}</p>}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Email Address</label>
+            <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary/50 px-3 py-2.5">
+              <span className="text-sm text-muted-foreground">{serverData?.email}</span>
+              <span className="ml-auto text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide">Read-only</span>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Phone Number</label>
+            <input type="tel" value={form.phone ?? ""} onChange={e => set("phone", e.target.value)} placeholder="+1 (416) 555-0100"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Years of Experience</label>
+            <input type="number" min={0} max={60} value={form.years_of_experience ?? ""} onChange={e => set("years_of_experience", e.target.value === "" ? undefined : Number(e.target.value))}
+              placeholder="e.g. 8"
+              className={`w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${errors.years_of_experience ? "border-rose-400 focus:ring-rose-200" : "border-border focus:border-primary focus:ring-primary/15"}`} />
+            {errors.years_of_experience && <p className="mt-1 text-xs text-rose-500">{errors.years_of_experience}</p>}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">LinkedIn Profile</label>
+            <div className="relative">
+              <Linkedin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input value={form.linkedin_url ?? ""} onChange={e => set("linkedin_url", e.target.value)} placeholder="linkedin.com/in/yourname"
+                className="w-full rounded-xl border border-border bg-background py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
+            </div>
+          </div>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Professional Bio</label>
+          <textarea value={form.bio ?? ""} onChange={e => set("bio", e.target.value)} rows={3}
+            placeholder="Brief professional summary (shown to employers on your profile)…"
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 resize-none" />
+        </div>
+      </div>
+
+      {/* ── Clinical credentials ──────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+        <PhysicianSectionHeader icon={Stethoscope} title="Clinical Credentials" subtitle="Specialty, certifications and licensure" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              Specialty <span className="text-rose-500">*</span>
+            </label>
+            <select value={form.specialty ?? ""} onChange={e => { set("specialty", e.target.value); set("sub_specialty", ""); }}
+              className={`w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${errors.specialty ? "border-rose-400 focus:ring-rose-200" : "border-border focus:border-primary focus:ring-primary/15"}`}>
+              <option value="">Select specialty…</option>
+              {SPECIALTIES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            {errors.specialty && <p className="mt-1 text-xs text-rose-500">{errors.specialty}</p>}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Sub-specialty</label>
+            <select value={form.sub_specialty ?? ""} onChange={e => set("sub_specialty", e.target.value)}
+              disabled={!form.specialty || subSpecialties.length === 0}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-50">
+              <option value="">Select sub-specialty…</option>
+              {subSpecialties.map(s => <option key={String(s.id)} value={String(s.id)}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">CPSO Number</label>
+            <input value={form.cpso_number ?? ""} onChange={e => set("cpso_number", e.target.value)} placeholder="e.g. 123456"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
+          </div>
+          <div className="flex items-center gap-3 self-end pb-0.5">
+            <label className="flex cursor-pointer items-center gap-3">
+              <div className="relative">
+                <input type="checkbox" className="sr-only" checked={form.work_eligibility ?? false}
+                  onChange={e => set("work_eligibility", e.target.checked)} />
+                <div className={`h-5 w-9 rounded-full transition-colors ${form.work_eligibility ? "bg-primary" : "bg-secondary border border-border"}`}>
+                  <div className={`h-4 w-4 rounded-full bg-white shadow transition-transform mt-0.5 ${form.work_eligibility ? "translate-x-4.5 ml-0.5" : "translate-x-0.5"}`} />
+                </div>
+              </div>
+              <span className="text-sm font-medium text-foreground">Eligible to work in Canada</span>
+            </label>
+          </div>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Board Certifications</label>
+          <textarea value={form.board_certifications ?? ""} onChange={e => set("board_certifications", e.target.value)} rows={2}
+            placeholder="e.g. FRCPC — Internal Medicine, ABIM Board Certified…"
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 resize-none" />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Degrees &amp; Education</label>
+          <textarea value={form.degrees ?? ""} onChange={e => set("degrees", e.target.value)} rows={2}
+            placeholder="e.g. MD — University of Toronto (2010), MSc — McGill (2012)…"
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 resize-none" />
+        </div>
+      </div>
+
+      {/* ── Location ─────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+        <PhysicianSectionHeader icon={MapPin} title="Location" subtitle="Your current practice location" />
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Street Address</label>
+          <input value={form.address ?? ""} onChange={e => set("address", e.target.value)} placeholder="123 University Ave"
+            className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">City</label>
+            <input value={form.city ?? ""} onChange={e => set("city", e.target.value)} placeholder="Toronto"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Province / Territory</label>
+            <select value={form.province ?? ""} onChange={e => set("province", e.target.value)}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15">
+              <option value="">Select province…</option>
+              {PROVINCES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Postal Code</label>
+            <input value={form.zip_code ?? ""} onChange={e => set("zip_code", e.target.value.toUpperCase())} placeholder="M5V 3L9" maxLength={7}
+              className={`w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${errors.zip_code ? "border-rose-400 focus:ring-rose-200" : "border-border focus:border-primary focus:ring-primary/15"}`} />
+            {errors.zip_code && <p className="mt-1 text-xs text-rose-500">{errors.zip_code}</p>}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Country</label>
+            <input value={form.country ?? "Canada"} onChange={e => set("country", e.target.value)} placeholder="Canada"
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15" />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Resume ───────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm space-y-4">
+        <PhysicianSectionHeader icon={FileCheck} title="Resume / CV" subtitle="Upload your latest curriculum vitae (PDF, DOC, DOCX · Max 5 MB)" />
+        {serverData?.resume_url && (
+          <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <FileText className="h-5 w-5 text-emerald-600 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-emerald-800">Resume on file</p>
+              <p className="text-xs text-emerald-600 truncate">{serverData.resume_url.split("/").pop()}</p>
+            </div>
+            <a href={serverData.resume_url} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition">
+              <ExternalLink className="h-3 w-3" /> View
+            </a>
+          </div>
+        )}
+        <div className="flex items-center gap-3">
+          <input ref={resumeInputRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={handleResumeUpload} />
+          <button type="button" onClick={() => resumeInputRef.current?.click()} disabled={resumeUploading}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-secondary disabled:opacity-50">
+            {resumeUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+            {resumeUploading ? "Uploading…" : serverData?.resume_url ? "Replace Resume" : "Upload Resume"}
+          </button>
+          <p className="text-xs text-muted-foreground">PDF, DOC, DOCX only</p>
+        </div>
+      </div>
+
+      {/* ── Save bar ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card px-6 py-4 shadow-sm">
+        <p className="text-xs text-muted-foreground">
+          {isDirty
+            ? <span className="font-semibold text-amber-600">You have unsaved changes</span>
+            : "All changes saved"}
+        </p>
+        <button type="submit" disabled={saving || !isDirty}
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          {saving ? "Saving…" : "Save Changes"}
+        </button>
+      </div>
+
     </form>
   );
 }
 
-function SettingsTab() {
-  const user = useAuthStore((s) => s.user);
-  const [sent, setSent] = useState(false);
-  const [loading, setLoading] = useState(false);
+function PasswordStrengthBar({ password }: { password: string }) {
+  const checks = [
+    { label: "8+ characters", pass: password.length >= 8 },
+    { label: "Uppercase letter", pass: /[A-Z]/.test(password) },
+    { label: "Lowercase letter", pass: /[a-z]/.test(password) },
+    { label: "Number", pass: /\d/.test(password) },
+    { label: "Special character", pass: /[^A-Za-z0-9]/.test(password) },
+  ];
+  const score = checks.filter(c => c.pass).length;
+  const colors = ["bg-rose-400", "bg-rose-400", "bg-amber-400", "bg-amber-400", "bg-emerald-500"];
+  const labels = ["", "Weak", "Fair", "Good", "Strong", "Very Strong"];
 
-  async function sendReset(e: React.FormEvent) {
+  if (!password) return null;
+
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className={`h-1 flex-1 rounded-full transition-colors duration-300 ${i <= score ? colors[score - 1] : "bg-secondary"}`} />
+        ))}
+      </div>
+      <div className="flex items-center justify-between">
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          {checks.map(c => (
+            <span key={c.label} className={`flex items-center gap-1 text-[11px] ${c.pass ? "text-emerald-600" : "text-muted-foreground"}`}>
+              {c.pass ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+              {c.label}
+            </span>
+          ))}
+        </div>
+        <span className={`text-xs font-bold ${score >= 4 ? "text-emerald-600" : score >= 3 ? "text-amber-600" : "text-rose-500"}`}>
+          {labels[score]}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SettingsTab() {
+  const { user, logout, refreshToken } = useAuthStore();
+  const navigate = useNavigate();
+
+  const [current, setCurrent] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  function validate(): boolean {
+    const errs: Record<string, string> = {};
+    if (!current) errs.current = "Current password is required";
+    if (!newPwd) errs.newPwd = "New password is required";
+    else if (newPwd.length < 8) errs.newPwd = "At least 8 characters required";
+    else if (current === newPwd) errs.newPwd = "Must be different from current password";
+    if (!confirm) errs.confirm = "Please confirm your new password";
+    else if (newPwd !== confirm) errs.confirm = "Passwords do not match";
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!user?.email) return;
+    if (!validate()) return;
     setLoading(true);
     try {
-      await api.post("/api/auth/password/reset/", { email: user.email });
-      setSent(true);
+      await api.post("/api/auth/password/change/", {
+        current_password: current,
+        new_password: newPwd,
+        confirm_password: confirm,
+        refresh_token: refreshToken ?? "",
+      });
+      setDone(true);
+      // Force logout after 3 seconds — tokens are invalidated server-side
+      setTimeout(() => {
+        logout();
+        navigate({ to: "/login" } as never);
+      }, 3000);
     } catch (err) {
       toast.error(apiError(err));
     } finally {
@@ -794,21 +1352,123 @@ function SettingsTab() {
     }
   }
 
-  return (
-    <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-      <h2 className="text-lg font-bold text-primary">Change Password</h2>
-      {sent ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-          Password reset email sent to <strong>{user?.email}</strong>. Check your inbox and follow the link to set a new password.
+  if (done) {
+    return (
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-8 shadow-sm text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 mb-4">
+          <CheckCircle2 className="h-7 w-7 text-emerald-600" />
         </div>
-      ) : (
-        <form onSubmit={sendReset} className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            We'll send a password reset link to <strong className="text-foreground">{user?.email}</strong>.
-          </p>
-          <SubmitButton loading={loading}>Send Reset Link</SubmitButton>
+        <h3 className="text-lg font-bold text-emerald-900">Password Changed Successfully</h3>
+        <p className="mt-2 text-sm text-emerald-700">
+          Your password has been updated. You'll be redirected to log in again in a few seconds…
+        </p>
+        <div className="mt-4 flex justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-emerald-500" />
+        </div>
+      </div>
+    );
+  }
+
+  function PwdInput({ id, value, show, onToggle, onChange, placeholder, error }: {
+    id: string; value: string; show: boolean; onToggle: () => void;
+    onChange: (v: string) => void; placeholder: string; error?: string;
+  }) {
+    return (
+      <div>
+        <div className="relative">
+          <input
+            id={id}
+            type={show ? "text" : "password"}
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder={placeholder}
+            autoComplete={id === "current" ? "current-password" : "new-password"}
+            className={`w-full rounded-xl border bg-background px-3 py-2.5 pr-10 text-sm outline-none transition focus:ring-2 ${error ? "border-rose-400 focus:ring-rose-200" : "border-border focus:border-primary focus:ring-primary/15"}`}
+          />
+          <button type="button" tabIndex={-1} onClick={onToggle}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition">
+            {show
+              ? <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              : <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            }
+          </button>
+        </div>
+        {error && <p className="mt-1 text-xs text-rose-500">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-lg space-y-5">
+
+      {/* Header card */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div className="flex items-center gap-3 pb-4 border-b border-border mb-4">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+            <SettingsIcon className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-foreground">Change Password</p>
+            <p className="text-xs text-muted-foreground">Signed in as <span className="font-medium">{user?.email}</span></p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Current password */}
+          <div>
+            <label htmlFor="current" className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              Current Password
+            </label>
+            <PwdInput id="current" value={current} show={showCurrent} onToggle={() => setShowCurrent(v => !v)}
+              onChange={v => { setCurrent(v); setFieldErrors(p => ({ ...p, current: "" })); }}
+              placeholder="Your current password" error={fieldErrors.current} />
+          </div>
+
+          <div className="h-px bg-border" />
+
+          {/* New password */}
+          <div>
+            <label htmlFor="newPwd" className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              New Password
+            </label>
+            <PwdInput id="newPwd" value={newPwd} show={showNew} onToggle={() => setShowNew(v => !v)}
+              onChange={v => { setNewPwd(v); setFieldErrors(p => ({ ...p, newPwd: "" })); }}
+              placeholder="Choose a strong password" error={fieldErrors.newPwd} />
+            <PasswordStrengthBar password={newPwd} />
+          </div>
+
+          {/* Confirm */}
+          <div>
+            <label htmlFor="confirm" className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+              Confirm New Password
+            </label>
+            <PwdInput id="confirm" value={confirm} show={showConfirm} onToggle={() => setShowConfirm(v => !v)}
+              onChange={v => { setConfirm(v); setFieldErrors(p => ({ ...p, confirm: "" })); }}
+              placeholder="Re-enter new password" error={fieldErrors.confirm} />
+            {confirm && newPwd === confirm && !fieldErrors.confirm && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-emerald-600">
+                <CheckCircle2 className="h-3 w-3" /> Passwords match
+              </p>
+            )}
+          </div>
+
+          <button type="submit" disabled={loading}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {loading ? "Updating…" : "Update Password"}
+          </button>
         </form>
-      )}
+      </div>
+
+      {/* Security tip */}
+      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+        <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+        <p className="text-xs text-amber-800">
+          After changing your password you will be signed out of all sessions and redirected to the login page.
+          Make sure you remember your new password before saving.
+        </p>
+      </div>
+
     </div>
   );
 }

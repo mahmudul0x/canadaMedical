@@ -8,16 +8,21 @@ import { useNotifications, type AppNotification } from "@/hooks/useNotifications
 import { useAuthStore } from "@/stores/auth";
 
 const TYPE_ICONS: Record<string, string> = {
-  admin_job:                 "💼",
-  admin_physician:           "👨‍⚕️",
-  admin_employer:            "🏥",
-  admin_assessment:          "📋",
-  admin_contact:             "✉️",
-  employer_application:      "📩",
-  employer_job_approved:     "✅",
-  employer_job_rejected:     "❌",
-  physician_app_status:      "🔔",
-  physician_assessment_status: "📋",
+  admin_job:                    "💼",
+  admin_physician:              "👨‍⚕️",
+  admin_employer:               "🏥",
+  admin_assessment:             "📋",
+  admin_contact:                "✉️",
+  admin_enterprise_request:     "🏢",
+  employer_application:         "📩",
+  employer_job_approved:        "✅",
+  employer_job_rejected:        "❌",
+  employer_offer_accepted:      "🎉",
+  employer_offer_declined:      "❌",
+  employer_custom_plan_payment: "💳",
+  employer_custom_plan_active:  "🚀",
+  physician_app_status:         "🔔",
+  physician_assessment_status:  "📋",
 };
 
 function formatTime(iso: string) {
@@ -111,7 +116,15 @@ export function NotificationBell({ role, className = "" }: Props) {
   function handleClick(n: AppNotification) {
     if (!n.is_read) markRead.mutate(n.id);
     setOpen(false);
-    if (n.link) navigate({ to: n.link as never });
+    if (!n.link) return;
+    const url = new URL(n.link, window.location.origin);
+    // External link — open in new tab
+    if (url.origin !== window.location.origin) {
+      window.open(n.link, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const searchParams = Object.fromEntries(url.searchParams.entries());
+    navigate({ to: url.pathname as never, search: Object.keys(searchParams).length ? searchParams : undefined } as never);
   }
 
   const isEmpty = items.length === 0 && !listQ.isFetching;
