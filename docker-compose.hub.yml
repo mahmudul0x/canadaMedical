@@ -1,6 +1,5 @@
 services:
 
-  # ── PostgreSQL Database ──────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -16,7 +15,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── Redis (Celery broker + Django Channels) ──────────────────────────────────
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -26,11 +24,8 @@ services:
       timeout: 3s
       retries: 10
 
-  # ── Django / Daphne ASGI Server ──────────────────────────────────────────────
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: তোমার-username/canadamed-backend:latest
     restart: unless-stopped
     env_file: .env
     environment:
@@ -52,18 +47,9 @@ services:
              python manage.py setup_plans &&
              python manage.py create_stripe_plans &&
              python -m daphne -b 0.0.0.0 -p 8000 core.asgi:application"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/schema/"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
 
-  # ── Celery Worker (async email, tasks) ──────────────────────────────────────
   celery:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: তোমার-username/canadamed-backend:latest
     restart: unless-stopped
     env_file: .env
     environment:
@@ -77,15 +63,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      backend:
-        condition: service_healthy
     command: celery -A core worker -l info --concurrency 2
 
-  # ── React / Vite Frontend ────────────────────────────────────────────────────
   frontend:
-    build:
-      context: ./canadamedical-frontend
-      dockerfile: Dockerfile
+    image: তোমার-username/canadamed-frontend:latest
     restart: unless-stopped
     environment:
       VITE_API_URL: http://localhost:8000

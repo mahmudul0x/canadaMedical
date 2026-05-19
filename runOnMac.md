@@ -60,9 +60,14 @@ docker compose up --build
 সব ঠিকমতো চললে এরকম দেখাবে:
 ```
 backend   | Daphne version 4.x.x, serving on 0.0.0.0:8000
-frontend  | Local: http://localhost:5173/
+frontend  | Local: http://localhost:8080/
 celery    | celery@... ready.
 ```
+
+Docker startup-এ automatically হবে:
+- Database migration
+- Subscription plans তৈরি (Basic, Professional, Enterprise)
+- Stripe-এ Professional plan sync
 
 ### ধাপ ৪ — Admin account তৈরি করো (নতুন terminal-এ)
 ```bash
@@ -98,7 +103,7 @@ docker compose restart backend
 
 | সার্ভিস | URL |
 |---------|-----|
-| Website (Frontend) | http://localhost:5173 |
+| Website (Frontend) | http://localhost:8080 |
 | Backend API | http://localhost:8000 |
 | API Documentation | http://localhost:8000/api/schema/swagger-ui/ |
 | Django Admin | http://localhost:8000/admin/ |

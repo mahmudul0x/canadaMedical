@@ -69,7 +69,7 @@ First build takes ~3-5 minutes. After that:
 
 | Service | URL |
 |---------|-----|
-| Frontend | http://localhost:5173 |
+| Frontend | http://localhost:8080 |
 | Backend API | http://localhost:8000 |
 | API Docs (Swagger) | http://localhost:8000/api/schema/swagger-ui/ |
 | Django Admin | http://localhost:8000/admin/ |
