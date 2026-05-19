@@ -154,9 +154,10 @@ docker compose logs -f
 
 ---
 
-## Docker Hub থেকে চালানো (Code ছাড়া — সহজ পদ্ধতি)
+## Docker Hub থেকে চালানো (Code ছাড়া — সবচেয়ে সহজ পদ্ধতি)
 
-Code নামাতে হবে না। শুধু দুটো ফাইল লাগবে যা তোমাকে পাঠানো হয়েছে:
+Code নামাতে হবে না, Git লাগবে না, Python/Node install করতে হবে না।
+শুধু দুটো ফাইল লাগবে যা তোমাকে পাঠানো হয়েছে:
 - `docker-compose.hub.yml`
 - `.env.example`
 
@@ -182,9 +183,12 @@ cp .env.example .env
 | Variable | কোথা থেকে পাবে |
 |----------|----------------|
 | `DB_PASSWORD` | যেকোনো password (যেমন: `mypassword123`) |
-| `SECRET_KEY` | যেকোনো random string (যেমন: `abc123xyz...`) |
-| `STRIPE_SECRET_KEY` | [stripe.com](https://stripe.com) → Developers → API keys |
-| `RESEND_API_KEY` | [resend.com](https://resend.com) → API Keys |
+| `SECRET_KEY` | যেকোনো random string (যেমন: `abc123xyz456def789`) |
+| `STRIPE_SECRET_KEY` | [stripe.com](https://stripe.com) → Developers → API keys → Secret key (`sk_test_...`) |
+| `STRIPE_PUBLISHABLE_KEY` | একই জায়গা → Publishable key (`pk_test_...`) |
+| `STRIPE_WEBHOOK_SECRET` | নিচের ধাপ ৭ দেখো |
+| `RESEND_API_KEY` | [resend.com](https://resend.com) → API Keys → Create API key (`re_...`) |
+| `RESEND_FROM_EMAIL` | `onboarding@resend.dev` রেখে দাও (test-এর জন্য) |
 
 ### ধাপ ৫ — চালাও
 ```bash
@@ -193,17 +197,54 @@ docker compose -f docker-compose.hub.yml up
 
 প্রথমবার Docker Hub থেকে images download হবে (~500MB), তারপর সব চালু হবে।
 
-### ধাপ ৬ — Browser-এ দেখো
+সব ঠিকমতো চললে এরকম দেখাবে:
+```
+backend   | Daphne version 4.x.x, serving on 0.0.0.0:8000
+frontend  | Local: http://localhost:8080/
+celery    | celery@... ready.
+```
+
+### ধাপ ৬ — Admin account তৈরি করো (নতুন terminal-এ)
+```bash
+docker compose -f docker-compose.hub.yml exec backend python manage.py createsuperuser
+```
+নাম, email, password দাও।
+
+### ধাপ ৭ — Stripe Webhook চালু করো (আরেকটা terminal-এ)
+
+Stripe CLI install করো:
+```bash
+brew install stripe/stripe-cli/stripe
+```
+
+তারপর:
+```bash
+stripe login
+stripe listen --forward-to localhost:8000/api/subscriptions/webhook/
+```
+
+Terminal-এ এরকম দেখাবে:
+```
+> Ready! Your webhook signing secret is whsec_abc123xyz...
+```
+
+ওই `whsec_...` কপি করো → `.env` ফাইলে `STRIPE_WEBHOOK_SECRET`-এ বসাও।
+
+তারপর restart করো:
+```bash
+docker compose -f docker-compose.hub.yml restart backend
+```
+
+### ধাপ ৮ — Browser-এ দেখো
 
 | সার্ভিস | URL |
 |---------|-----|
 | Website | http://localhost:8080 |
 | API | http://localhost:8000 |
+| API Docs | http://localhost:8000/api/schema/swagger-ui/ |
 | Admin | http://localhost:8000/admin/ |
 
-### ধাপ ৭ — Admin account তৈরি করো (নতুন terminal-এ)
+### বন্ধ করতে
 ```bash
-docker compose -f docker-compose.hub.yml exec backend python manage.py createsuperuser
+docker compose -f docker-compose.hub.yml down
 ```
-
-এটুকুই। Code নামাতে হবে না, Python/Node install করতে হবে না।
