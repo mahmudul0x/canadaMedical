@@ -151,3 +151,59 @@ docker compose logs celery
 # সব logs দেখো (live)
 docker compose logs -f
 ```
+
+---
+
+## Docker Hub থেকে চালানো (Code ছাড়া — সহজ পদ্ধতি)
+
+Code নামাতে হবে না। শুধু দুটো ফাইল লাগবে যা তোমাকে পাঠানো হয়েছে:
+- `docker-compose.hub.yml`
+- `.env.example`
+
+### ধাপ ১ — Docker Desktop install করো
+[docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) থেকে নামাও → install করো → চালু করো।
+
+### ধাপ ২ — একটা folder তৈরি করো
+```bash
+mkdir canadamed
+cd canadamed
+```
+
+### ধাপ ৩ — দুটো ফাইল ওই folder-এ রাখো
+তোমাকে পাঠানো `docker-compose.hub.yml` আর `.env.example` এই folder-এ রাখো।
+
+### ধাপ ৪ — `.env` তৈরি করো
+```bash
+cp .env.example .env
+```
+
+তারপর `.env` ফাইল খুলে নিজের values বসাও:
+
+| Variable | কোথা থেকে পাবে |
+|----------|----------------|
+| `DB_PASSWORD` | যেকোনো password (যেমন: `mypassword123`) |
+| `SECRET_KEY` | যেকোনো random string (যেমন: `abc123xyz...`) |
+| `STRIPE_SECRET_KEY` | [stripe.com](https://stripe.com) → Developers → API keys |
+| `RESEND_API_KEY` | [resend.com](https://resend.com) → API Keys |
+
+### ধাপ ৫ — চালাও
+```bash
+docker compose -f docker-compose.hub.yml up
+```
+
+প্রথমবার Docker Hub থেকে images download হবে (~500MB), তারপর সব চালু হবে।
+
+### ধাপ ৬ — Browser-এ দেখো
+
+| সার্ভিস | URL |
+|---------|-----|
+| Website | http://localhost:8080 |
+| API | http://localhost:8000 |
+| Admin | http://localhost:8000/admin/ |
+
+### ধাপ ৭ — Admin account তৈরি করো (নতুন terminal-এ)
+```bash
+docker compose -f docker-compose.hub.yml exec backend python manage.py createsuperuser
+```
+
+এটুকুই। Code নামাতে হবে না, Python/Node install করতে হবে না।
