@@ -472,7 +472,7 @@ function JobsPage() {
     <div className="flex flex-1 flex-col overflow-hidden">
 
       {/* ── PAGE HEADER ── */}
-      <div className="flex-none border-b border-border bg-linear-to-r from-primary to-primary-glow px-6 py-5 lg:px-14">
+      <div className="flex-none border-b border-border bg-linear-to-r from-primary to-primary-glow px-4 py-4 sm:px-6 sm:py-5 lg:px-14">
         <div className="text-center">
           <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">CandianMdJobs</p>
           <h1 className="mt-0.5 text-2xl font-extrabold text-white">Physician Job Board</h1>
@@ -481,7 +481,7 @@ function JobsPage() {
       </div>
 
       {/* ── BODY: sidebar + job list ── flex-1, both columns independent */}
-      <div className="flex flex-1 overflow-hidden bg-secondary/40 px-6 py-5 lg:px-14 lg:py-6 gap-5">
+      <div className="flex flex-1 overflow-hidden bg-secondary/40 gap-4 px-3 py-3 sm:px-6 sm:py-5 lg:gap-5 lg:px-14 lg:py-6">
 
         {/* ── LEFT SIDEBAR — always visible, scrolls independently ── */}
         <aside className="hidden w-72 flex-none overflow-y-auto rounded-xl border border-border bg-card scrollbar-none shadow-sm lg:block">
@@ -517,7 +517,7 @@ function JobsPage() {
         <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
 
           {/* Toolbar — fixed inside right column */}
-          <div className="flex-none border-b border-border bg-card px-5 py-3">
+          <div className="flex-none border-b border-border bg-card px-3 py-2.5 sm:px-5 sm:py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 {/* Mobile filter button */}
@@ -570,7 +570,7 @@ function JobsPage() {
           </div>
 
           {/* Job cards — only this div scrolls */}
-          <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="flex-1 overflow-y-auto px-2 py-3 sm:px-4 sm:py-4">
             <div className={view === "grid" ? "grid gap-3 sm:grid-cols-2" : "space-y-2.5"}>
               {isLoading && Array.from({ length: 6 }).map((_, i) => <JobCardSkeleton key={i} />)}
               {!isLoading && jobs.map((j) => <JobCard key={j.id} job={j} view={view} />)}

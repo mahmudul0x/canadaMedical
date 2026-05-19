@@ -183,6 +183,23 @@
     font-feature-settings: "ss01", "cv11";
   }
 
+  button,
+  a,
+  [role="button"],
+  select,
+  summary,
+  label:has(input[type="radio"]),
+  label:has(input[type="checkbox"]) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     letter-spacing: -0.02em;
   }

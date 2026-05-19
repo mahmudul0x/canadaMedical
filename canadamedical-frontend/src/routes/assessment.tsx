@@ -210,7 +210,7 @@ function AssessmentPage() {
   if (done) {
     return (
       <div className="min-h-screen bg-linear-to-b from-background to-secondary/20">
-        <div className="mx-auto max-w-2xl px-4 py-24 text-center">
+        <div className="mx-auto max-w-2xl px-4 py-16 text-center sm:py-24">
           <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100">
             <CheckCircle2 className="h-10 w-10 text-emerald-600" />
           </div>

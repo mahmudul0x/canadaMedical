@@ -738,7 +738,7 @@ function JobDetailPage() {
 
       {/* Hero */}
       <section className="bg-linear-to-br from-primary to-primary-glow text-primary-foreground">
-        <div className="mx-auto max-w-7xl px-4 py-12 lg:px-8 lg:py-16">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:py-12 lg:px-8 lg:py-16">
           <Link to="/jobs" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-foreground/75 hover:text-accent transition">
             <ArrowLeft className="h-4 w-4" /> Back to all jobs
           </Link>
@@ -812,7 +812,7 @@ function JobDetailPage() {
       </section>
 
       {/* Body */}
-      <section className="mx-auto grid max-w-7xl gap-10 px-4 py-12 lg:grid-cols-[1fr_320px] lg:px-8">
+      <section className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:py-12 lg:grid-cols-[1fr_320px] lg:gap-10 lg:px-8">
         <article className="space-y-10">
           {job.description && (
             <div>

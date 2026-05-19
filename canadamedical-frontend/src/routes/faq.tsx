@@ -62,7 +62,7 @@ function FAQPage() {
   return (
     <div>
       <PageHeader eyebrow="Help" title="Frequently asked questions" subtitle="Quick answers to the most common questions from physicians and employers." />
-      <section className="mx-auto max-w-3xl px-4 py-16 lg:px-8">
+      <section className="mx-auto max-w-3xl px-4 py-10 sm:py-16 lg:px-8">
         <div className="mb-6 space-y-3">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

@@ -148,14 +148,14 @@ function AboutHero() {
       <div className="pointer-events-none absolute -left-48 top-0 h-125 w-125 rounded-full bg-accent/20 blur-[130px]" />
       <div className="pointer-events-none absolute -right-32 bottom-0 h-100 w-100 rounded-full bg-accent-alt/15 blur-[110px]" />
 
-      <div className="relative mx-auto max-w-7xl px-4 py-28 lg:px-8 lg:py-40">
+      <div className="relative mx-auto max-w-7xl px-4 py-16 sm:py-24 lg:px-8 lg:py-40">
         <div className="max-w-3xl">
           <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/10 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-accent backdrop-blur">
             <Sparkles className="h-3.5 w-3.5" /> Our Story
           </div>
 
           <h1
-            className="animate-fade-up mt-6 text-5xl font-extrabold leading-[1.04] tracking-tight sm:text-6xl lg:text-[68px]"
+            className="animate-fade-up mt-6 text-4xl font-extrabold leading-[1.04] tracking-tight sm:text-5xl lg:text-[68px]"
             style={{ animationDelay: "60ms" }}
           >
             Built for Canada's
@@ -199,12 +199,12 @@ function AboutHero() {
 function OurStory() {
   return (
     <section className="bg-surface">
-      <div className="mx-auto max-w-7xl px-4 py-24 lg:px-8">
-        <div className="grid items-center gap-14 lg:grid-cols-2">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
+        <div className="grid items-center gap-8 sm:gap-14 lg:grid-cols-2">
           {/* Text */}
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Our Story</p>
-            <h2 className="mt-3 text-4xl font-extrabold tracking-tight text-primary sm:text-5xl">
+            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-primary sm:text-4xl lg:text-5xl">
               Connecting Canada's Medical Talent
             </h2>
             <p className="mt-5 text-[17px] leading-relaxed text-foreground/70">
@@ -255,12 +255,12 @@ function OurStory() {
               </div>
             </div>
             {/* Floating badge */}
-            <div className="absolute -bottom-5 -left-5 rounded-2xl border border-border bg-card p-4 shadow-card">
+            <div className="absolute -bottom-5 -left-5 hidden rounded-2xl border border-border bg-card p-4 shadow-card sm:block">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Nationwide</p>
               <p className="mt-0.5 text-2xl font-extrabold text-primary">13</p>
               <p className="text-xs text-muted-foreground">Provinces & Territories</p>
             </div>
-            <div className="absolute -right-5 -top-5 rounded-2xl border border-border bg-card p-4 shadow-card">
+            <div className="absolute -right-5 -top-5 hidden rounded-2xl border border-border bg-card p-4 shadow-card sm:block">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Satisfaction</p>
               <p className="mt-0.5 text-2xl font-extrabold text-primary">95%</p>
               <p className="text-xs text-muted-foreground">Placement success rate</p>
@@ -303,10 +303,10 @@ function MissionVisionSection() {
 
   return (
     <section className="bg-surface-alt">
-      <div className="mx-auto max-w-7xl px-4 py-24 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">What Drives Us</p>
-          <h2 className="mt-3 text-4xl font-extrabold tracking-tight text-primary sm:text-5xl">
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-primary sm:text-4xl lg:text-5xl">
             Our Mission, Vision & Values
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
@@ -315,11 +315,11 @@ function MissionVisionSection() {
           </p>
         </div>
 
-        <div className="mt-14 grid gap-6 lg:grid-cols-3">
+        <div className="mt-10 grid gap-5 sm:mt-14 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map((c, i) => (
             <div
               key={c.label}
-              className={`animate-fade-up rounded-2xl border bg-linear-to-br p-7 shadow-card ${c.color}`}
+              className={`animate-fade-up rounded-2xl border bg-linear-to-br p-5 sm:p-7 shadow-card ${c.color}`}
               style={{ animationDelay: `${i * 80}ms` }}
             >
               <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${c.iconBg}`}>
@@ -347,10 +347,10 @@ function CoreValuesSection() {
       <div className="pointer-events-none absolute -left-32 bottom-0 h-80 w-80 rounded-full bg-accent/15 blur-[100px]" />
       <div className="pointer-events-none absolute -right-32 top-0 h-80 w-80 rounded-full bg-accent-alt/10 blur-[100px]" />
 
-      <div className="relative mx-auto max-w-7xl px-4 py-24 lg:px-8">
+      <div className="relative mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Core Values</p>
-          <h2 className="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl">What We Stand For</h2>
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl">What We Stand For</h2>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-primary-foreground/60">
             Every decision we make is guided by our core values — from how we vet our employer
             partners to how we support physicians in their career journey.
@@ -361,7 +361,7 @@ function CoreValuesSection() {
           {CORE_VALUES.map((v, i) => (
             <div
               key={v.title}
-              className="animate-fade-up group rounded-2xl border border-primary-foreground/10 bg-primary-foreground/4 p-7 backdrop-blur transition hover:border-accent/30 hover:bg-primary-foreground/8"
+              className="animate-fade-up group rounded-2xl border border-primary-foreground/10 bg-primary-foreground/4 p-5 sm:p-7 backdrop-blur transition hover:border-accent/30 hover:bg-primary-foreground/8"
               style={{ animationDelay: `${i * 80}ms` }}
             >
               <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${v.color}`}>
@@ -381,10 +381,10 @@ function CoreValuesSection() {
 function TimelineSection() {
   return (
     <section className="bg-surface">
-      <div className="mx-auto max-w-7xl px-4 py-24 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Our Journey</p>
-          <h2 className="mt-3 text-4xl font-extrabold tracking-tight text-primary sm:text-5xl">
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-primary sm:text-4xl lg:text-5xl">
             How We've Grown
           </h2>
         </div>
@@ -450,10 +450,10 @@ function ImpactSection() {
 
   return (
     <section ref={ref} className="bg-surface-alt">
-      <div className="mx-auto max-w-7xl px-4 py-24 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Our Impact</p>
-          <h2 className="mt-3 text-4xl font-extrabold tracking-tight text-primary sm:text-5xl">
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-primary sm:text-4xl lg:text-5xl">
             Across Canada
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-lg text-muted-foreground">
@@ -479,7 +479,7 @@ function ImpactCard({
   const v = useCounter(value, 1800, seen);
   return (
     <div
-      className={`rounded-2xl border border-border bg-card p-7 text-center shadow-card transition hover:-translate-y-0.5 hover:shadow-hover ${seen ? "animate-fade-up" : "opacity-0"}`}
+      className={`rounded-2xl border border-border bg-card p-5 sm:p-7 text-center shadow-card transition hover:-translate-y-0.5 hover:shadow-hover ${seen ? "animate-fade-up" : "opacity-0"}`}
       style={{ animationDelay: `${delay}ms` }}
     >
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10 text-accent">
@@ -497,11 +497,11 @@ function ImpactCard({
 function ProvincesSection() {
   return (
     <section className="bg-surface">
-      <div className="mx-auto max-w-7xl px-4 py-24 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
         <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">National Coverage</p>
-            <h2 className="mt-3 text-4xl font-extrabold tracking-tight text-primary sm:text-5xl">
+            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-primary sm:text-4xl lg:text-5xl">
               Physician Opportunities in Every Province & Territory
             </h2>
             <p className="mt-4 max-w-xl text-lg text-muted-foreground">
@@ -540,19 +540,19 @@ function ProvincesSection() {
 function AboutCTA() {
   return (
     <section className="bg-surface-alt">
-      <div className="mx-auto max-w-7xl px-4 pb-24 pt-4 lg:px-8">
-        <div className="relative isolate overflow-hidden rounded-3xl bg-primary p-10 text-primary-foreground shadow-elegant lg:p-16">
+      <div className="mx-auto max-w-7xl px-4 pb-14 pt-4 sm:pb-24 lg:px-8">
+        <div className="relative isolate overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground shadow-elegant sm:p-10 lg:p-16">
           <div className="absolute inset-0 bg-gradient-mesh opacity-70" />
           <div className="absolute inset-0 bg-grid opacity-[0.04]" />
           <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-accent/25 blur-3xl" />
           <div className="pointer-events-none absolute -left-24 -bottom-24 h-80 w-80 rounded-full bg-accent-alt/20 blur-3xl" />
 
-          <div className="relative grid items-center gap-10 lg:grid-cols-[1.3fr_1fr]">
+          <div className="relative grid items-center gap-8 lg:grid-cols-[1.3fr_1fr] lg:gap-10">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-accent">
                 Join the CanadianMDjobs Community
               </p>
-              <h2 className="mt-4 text-4xl font-extrabold tracking-tight sm:text-5xl">
+              <h2 className="mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl">
                 Ready to take the next step?
               </h2>
               <p className="mt-4 max-w-xl text-lg text-primary-foreground/65">

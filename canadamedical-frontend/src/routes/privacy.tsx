@@ -15,7 +15,7 @@ function PrivacyPage() {
   return (
     <div>
       <PageHeader eyebrow="Legal" title="Privacy Policy" subtitle="Last updated: May 1, 2026" />
-      <article className="prose-policy mx-auto max-w-3xl space-y-6 px-4 py-16 text-foreground/85 lg:px-8">
+      <article className="prose-policy mx-auto max-w-3xl space-y-6 px-4 py-10 text-foreground/85 sm:py-16 lg:px-8">
         <Section title="1. Overview">
           CandianMdJobs Inc. ("CandianMdJobs", "we", "us") respects your privacy. This policy explains what information we collect,
           how we use it, and the choices you have. We comply with the federal <em>Personal Information Protection and Electronic

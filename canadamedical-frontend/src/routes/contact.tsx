@@ -66,8 +66,8 @@ function ContactPage() {
     <div>
       <PageHeader eyebrow="Get in touch" title="Contact CandianMdJobs" subtitle="Whether you're a physician exploring options or an employer ready to hire — we're here." />
 
-      <section className="mx-auto -mt-12 grid max-w-7xl gap-8 px-4 pb-16 lg:grid-cols-[1fr_2fr] lg:px-8">
-        <aside className="space-y-4">
+      <section className="mx-auto max-w-7xl gap-8 px-4 pb-16 pt-8 lg:-mt-12 lg:grid lg:grid-cols-[1fr_2fr] lg:px-8 lg:pt-0">
+        <aside className="space-y-3 sm:space-y-4">
           <div className="rounded-2xl border border-border bg-card p-6 shadow-(--shadow-card)">
             <div className="flex items-start gap-3"><MapPin className="mt-0.5 h-5 w-5 text-accent" /><div><div className="font-semibold text-primary">Headquarters</div><div className="text-sm text-muted-foreground">100 King St W, Suite 4200<br/>Toronto, ON M5X 1E2</div></div></div>
           </div>
@@ -78,7 +78,7 @@ function ContactPage() {
             <div className="flex items-start gap-3"><Mail className="mt-0.5 h-5 w-5 text-accent" /><div><div className="font-semibold text-primary">Email</div><div className="text-sm text-muted-foreground">hello@CandianMdJobs.ca</div></div></div>
           </div>
         </aside>
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-(--shadow-card) sm:p-10">
+        <div className="mt-4 rounded-2xl border border-border bg-card p-6 shadow-(--shadow-card) sm:p-10 lg:mt-0">
           {done ? <SuccessNotice message="Message received. Our team will reply within one business day." /> : (
             <form onSubmit={onSubmit} className="space-y-5">
               <div className="grid gap-5 sm:grid-cols-2">
@@ -98,14 +98,14 @@ function ContactPage() {
       </section>
 
       {/* Quick Help */}
-      <section className="mx-auto max-w-7xl px-4 pb-20 lg:px-8">
+      <section className="mx-auto max-w-7xl px-4 pb-14 sm:pb-20 lg:px-8">
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Quick help</p>
-          <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-primary">Not sure where to start?</h2>
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-primary sm:text-3xl">Not sure where to start?</h2>
         </div>
-        <div className="mt-8 grid gap-5 sm:grid-cols-3">
+        <div className="mt-6 grid gap-4 sm:mt-8 sm:grid-cols-3">
           {QUICK_HELP.map(({ icon: Icon, title, desc, cta, to }) => (
-            <div key={title} className="flex flex-col rounded-2xl border border-border bg-card p-7 shadow-(--shadow-card) transition hover:-translate-y-1 hover:border-accent/40 hover:shadow-md">
+            <div key={title} className="flex flex-col rounded-2xl border border-border bg-card p-5 sm:p-7 shadow-(--shadow-card) transition hover:-translate-y-1 hover:border-accent/40 hover:shadow-md">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10 text-accent">
                 <Icon className="h-6 w-6" />
               </div>

@@ -20,8 +20,8 @@ function TestimonialsPage() {
   return (
     <div>
       <PageHeader eyebrow="Voices" title="Stories from physicians across Canada" subtitle="Real experiences from doctors who found their next chapter through CandianMdJobs." />
-      <section className="mx-auto max-w-7xl px-4 py-16 lg:px-8">
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:py-16 lg:px-8">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((t) => (
             <figure key={t.name} className="relative flex flex-col rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-card)]">
               <Quote className="absolute right-5 top-5 h-8 w-8 text-accent/30" />
