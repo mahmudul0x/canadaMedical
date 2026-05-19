@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/site/PageHeader";
 import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/faq")({
-  head: () => ({ meta: [{ title: "FAQ — MedConnect Canada" }] }),
+  head: () => ({ meta: [{ title: "FAQ — CandianMdJobs" }] }),
   component: FAQPage,
 });
 
@@ -19,7 +19,7 @@ interface FAQItem {
 }
 
 const STATIC_FAQS: FAQItem[] = [
-  { id: -1, category: "General", question: "Is MedConnect free for physicians?", answer: "Yes — registration, profile creation, applications and recruiter support are completely free for physicians." },
+  { id: -1, category: "General", question: "Is CandianMdJobs free for physicians?", answer: "Yes — registration, profile creation, applications and recruiter support are completely free for physicians." },
   { id: -2, category: "General", question: "How are jobs verified?", answer: "Every employer is vetted and every job listing is reviewed by our recruitment team before going live." },
   { id: -3, category: "Physicians", question: "I'm an internationally trained physician. Can you help?", answer: "Absolutely. We work with IMGs through licensing pathways (MCC, Practice Ready Assessment) and immigration support across most provinces." },
   { id: -4, category: "Physicians", question: "Will my profile be visible to my current employer?", answer: "No. Your profile is confidential. Employers only see your details after you apply or you opt-in to be discoverable." },

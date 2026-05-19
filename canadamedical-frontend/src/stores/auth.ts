@@ -77,7 +77,7 @@ export const useAuthStore = create<AuthState>()(
       setHydrated: () => set({ hydrated: true }),
     }),
     {
-      name: "medconnect-auth",
+      name: "CandianMdJobs-auth",
       storage: createJSONStorage(() =>
         typeof window !== "undefined" ? window.localStorage : (undefined as unknown as Storage),
       ),

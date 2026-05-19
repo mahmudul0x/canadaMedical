@@ -22,6 +22,8 @@ import {
   UserCircle,
   Building2,
   DollarSign,
+  Menu,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Logo } from "@/components/site/Logo";
@@ -141,7 +143,7 @@ function AdminLoginPage() {
             </div>
             <div>
               <h1 className="text-center text-xl font-extrabold text-white">Admin Portal</h1>
-              <p className="mt-1 text-center text-xs text-white/50">MedConnect Canada — Staff only</p>
+              <p className="mt-1 text-center text-xs text-white/50">CandianMdJobs — Staff only</p>
             </div>
           </div>
 
@@ -278,12 +280,90 @@ function AdminLayout() {
     navigate({ to: "/admin" as never });
   }
 
+  // Quick-access links shown in mobile bottom bar (most important 5)
+  const MOBILE_QUICK = [
+    { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
+    { to: "/admin/jobs", label: "Jobs", icon: Briefcase },
+    { to: "/admin/users", label: "Users", icon: Users },
+    { to: "/admin/enterprise", label: "Enterprise", icon: Building2 },
+    { to: "/admin/profile", label: "Profile", icon: UserCircle },
+  ];
+
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-secondary/40">
-      {/* Top bar */}
+    <div className="flex h-dvh flex-col overflow-hidden bg-secondary/40">
+
+      {/* ── Mobile drawer backdrop ──────────────────────────────────────── */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-primary/60 backdrop-blur-sm lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* ── Mobile slide-in drawer ──────────────────────────────────────── */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col overflow-hidden bg-sidebar text-sidebar-foreground shadow-xl transition-transform duration-300 lg:hidden ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 px-4">
+          <Logo inverse size="sm" />
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="rounded-lg p-1.5 text-sidebar-foreground/60 hover:bg-white/10 transition"
+            aria-label="Close menu"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.title}>
+              <div className="px-1 pb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-sidebar-foreground/50">
+                {group.title}
+              </div>
+              <ul className="space-y-1">
+                {group.links.map((l) => {
+                  const active = l.exact ? pathname === l.to : pathname.startsWith(l.to);
+                  const badge = l.to === "/admin/enterprise" && enterprisePendingCount > 0 ? enterprisePendingCount : null;
+                  return (
+                    <li key={l.to}>
+                      <Link
+                        to={l.to as never}
+                        onClick={() => setMobileOpen(false)}
+                        className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                          active ? "bg-white/10 text-white" : "text-sidebar-foreground/75 hover:bg-white/5 hover:text-white"
+                        }`}
+                      >
+                        <l.icon className={`h-4 w-4 flex-none ${active ? "text-accent" : ""}`} />
+                        <span className="flex-1 truncate">{l.label}</span>
+                        {badge !== null && (
+                          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-bold text-primary">
+                            {badge > 99 ? "99+" : badge}
+                          </span>
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+        <div className="shrink-0 border-t border-white/10 p-3">
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-sidebar-foreground/75 transition hover:bg-destructive/15 hover:text-white"
+          >
+            <LogOut className="h-4 w-4 flex-none" /> Sign out
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Top bar ────────────────────────────────────────────────────────── */}
       <header className="z-30 flex-none border-b border-border bg-card/80 backdrop-blur-xl">
-        <div className="flex items-center gap-3 px-4 py-3 lg:px-6">
-          {/* Sidebar toggle — desktop */}
+        <div className="flex h-14 items-center gap-2 px-3 lg:gap-3 lg:px-6">
+          {/* Desktop: sidebar collapse */}
           <button
             onClick={() => setSidebarOpen((o) => !o)}
             className="hidden items-center justify-center rounded-lg border border-border bg-background p-1.5 text-foreground/70 transition hover:border-primary/30 hover:text-primary lg:inline-flex"
@@ -291,26 +371,26 @@ function AdminLayout() {
           >
             {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
           </button>
-
-          {/* Mobile hamburger */}
+          {/* Mobile: hamburger */}
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="inline-flex items-center justify-center rounded-lg border border-border bg-background p-1.5 text-foreground/70 transition hover:border-primary/30 hover:text-primary lg:hidden"
+            className="inline-flex items-center justify-center rounded-lg border border-border bg-background p-1.5 text-foreground/70 transition hover:bg-secondary lg:hidden"
             aria-label="Open menu"
           >
-            <LayoutDashboard className="h-4 w-4" />
+            <Menu className="h-4 w-4" />
           </button>
 
-          <Logo />
-          <div className="mx-3 hidden h-5 w-px bg-border lg:block" />
+          <Logo size="sm" />
+          <div className="mx-2 hidden h-5 w-px bg-border lg:block" />
 
           <div className="hidden flex-1 sm:block">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              Admin {current && current.label !== "Dashboard" ? `· ${current.label}` : ""}
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground truncate">
+              Admin{current && current.label !== "Dashboard" ? ` · ${current.label}` : ""}
             </p>
           </div>
 
+          {/* Search — desktop only */}
           <div className="relative hidden flex-1 max-w-xs md:block" ref={searchRef}>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -341,29 +421,31 @@ function AdminLayout() {
             )}
           </div>
 
-          <div className="flex flex-1 items-center justify-end gap-2">
+          <div className="flex flex-1 items-center justify-end gap-1.5">
             <NotificationBell role="admin" />
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5">
-              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-accent text-xs font-bold text-primary">
+            <div className="hidden items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 sm:flex">
+              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-accent text-xs font-bold text-primary shrink-0">
                 {(user?.email ?? "A").slice(0, 1).toUpperCase()}
               </span>
-              <div className="hidden text-xs sm:block">
+              <div className="hidden text-xs md:block">
                 <div className="font-semibold text-foreground leading-tight">{user?.first_name || "Admin"}</div>
-                <div className="truncate text-muted-foreground max-w-32.5">{user?.email}</div>
+                <div className="truncate text-muted-foreground max-w-32">{user?.email}</div>
               </div>
             </div>
             <Link
               to="/"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground/70 transition hover:border-primary/30 hover:text-primary"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-foreground/70 transition hover:text-primary hover:border-primary/30"
+              title="Go to site"
             >
-              <Home className="h-3.5 w-3.5" /> Home
+              <Home className="h-4 w-4" />
             </Link>
           </div>
         </div>
       </header>
 
-      {/* Body */}
+      {/* ── Body ───────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
+
         {/* Desktop sidebar */}
         <aside
           className={`hidden flex-none overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm transition-[width] duration-300 lg:flex lg:flex-col ${
@@ -371,7 +453,6 @@ function AdminLayout() {
           }`}
         >
           <div className={`flex flex-1 flex-col overflow-hidden transition-opacity duration-300 ${sidebarOpen ? "opacity-100" : "opacity-0"}`}>
-            {/* Nav */}
             <nav className="flex-1 space-y-6 overflow-y-auto scrollbar-none px-3 py-5">
               {NAV_GROUPS.map((group) => (
                 <div key={group.title}>
@@ -410,8 +491,6 @@ function AdminLayout() {
                 </div>
               ))}
             </nav>
-
-            {/* Footer */}
             <div className="flex-none border-t border-white/10 p-3">
               <button
                 onClick={handleLogout}
@@ -423,60 +502,37 @@ function AdminLayout() {
           </div>
         </aside>
 
-        {/* Mobile drawer */}
-        {mobileOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-40 bg-primary/60 backdrop-blur-sm lg:hidden"
-              onClick={() => setMobileOpen(false)}
-            />
-            <aside className="fixed inset-y-0 left-0 z-50 flex w-72 flex-col overflow-hidden bg-sidebar text-sidebar-foreground shadow-modal lg:hidden">
-              <div className="flex-none border-b border-white/10 px-5 py-5">
-                <Logo inverse />
-              </div>
-              <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
-                {NAV_GROUPS.map((group) => (
-                  <div key={group.title}>
-                    <div className="px-1 pb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-sidebar-foreground/50">
-                      {group.title}
-                    </div>
-                    <ul className="space-y-1">
-                      {group.links.map((l) => {
-                        const active = l.exact ? pathname === l.to : pathname.startsWith(l.to);
-                        const badge = l.to === "/admin/enterprise" && enterprisePendingCount > 0 ? enterprisePendingCount : null;
-                        return (
-                          <li key={l.to}>
-                            <Link
-                              to={l.to as never}
-                              onClick={() => setMobileOpen(false)}
-                              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold ${
-                                active ? "bg-white/10 text-white" : "text-sidebar-foreground/75"
-                              }`}
-                            >
-                              <l.icon className={`h-4 w-4 ${active ? "text-accent" : ""}`} />
-                              <span className="flex-1">{l.label}</span>
-                              {badge !== null && (
-                                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-bold text-primary">
-                                  {badge > 99 ? "99+" : badge}
-                                </span>
-                              )}
-                            </Link>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                ))}
-              </nav>
-            </aside>
-          </>
-        )}
-
         {/* Main content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
           <Outlet />
         </main>
       </div>
+
+      {/* ── Mobile bottom tab bar ───────────────────────────────────────────── */}
+      <nav className="fixed bottom-0 inset-x-0 z-30 flex border-t border-border bg-card/95 backdrop-blur-xl lg:hidden">
+        {MOBILE_QUICK.map((l) => {
+          const active = l.exact ? pathname === l.to : pathname.startsWith(l.to);
+          const badge = l.to === "/admin/enterprise" && enterprisePendingCount > 0 ? enterprisePendingCount : null;
+          return (
+            <Link
+              key={l.to}
+              to={l.to as never}
+              className={`relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10px] font-semibold transition-colors ${
+                active ? "text-primary" : "text-muted-foreground"
+              }`}
+            >
+              <l.icon className={`h-5 w-5 ${active ? "text-primary" : "text-muted-foreground"}`} />
+              <span className="leading-none truncate">{l.label.split(" ")[0]}</span>
+              {badge !== null && (
+                <span className="absolute top-1.5 right-[calc(50%-16px)] flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-primary">
+                  {badge > 9 ? "9+" : badge}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+
     </div>
   );
 }

@@ -29,7 +29,7 @@ class Command(BaseCommand):
 
         self.stdout.write('Creating Stripe product...')
         product = stripe.Product.create(
-            name='MedConnect Canada - Professional Plan',
+            name='CandianMdJobs - Professional Plan',
             description='For healthcare organizations with regular recruitment needs',
         )
         self.stdout.write(f'  Product ID: {product.id}')

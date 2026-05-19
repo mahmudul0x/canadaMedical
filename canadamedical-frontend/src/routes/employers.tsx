@@ -14,8 +14,8 @@ import { useAuthStore } from "@/stores/auth";
 export const Route = createFileRoute("/employers")({
   head: () => ({
     meta: [
-      { title: "For Employers — Hire Physicians in Canada | MedConnect Canada" },
-      { name: "description", content: "Reach 9,000+ verified Canadian physicians. Post roles, screen candidates, and hire faster with MedConnect Canada." },
+      { title: "For Employers — Hire Physicians in Canada | CandianMdJobs" },
+      { name: "description", content: "Reach 9,000+ verified Canadian physicians. Post roles, screen candidates, and hire faster with CandianMdJobs." },
     ],
   }),
   validateSearch: (s: Record<string, unknown>): { subscription?: string } => ({
@@ -65,7 +65,7 @@ const STATIC_EMPLOYER_TESTIMONIALS: EmployerTestimonial[] = [
     id: -2,
     physician_name: "VP Medical Affairs",
     organization: "Vancouver Coastal Health Authority",
-    testimonial_text: "MedConnect cut our time-to-hire from four months to under 30 days. The dedicated account manager understood exactly what we needed.",
+    testimonial_text: "CandianMdJobs cut our time-to-hire from four months to under 30 days. The dedicated account manager understood exactly what we needed.",
     rating: 5,
   },
 ];
@@ -89,7 +89,7 @@ function EmployersPage() {
       <PageHeader
         eyebrow="For Employers"
         title="Hire exceptional physicians, faster"
-        subtitle="Hospitals, clinics, and health authorities partner with MedConnect to fill critical roles across Canada."
+        subtitle="Hospitals, clinics, and health authorities partner with CandianMdJobs to fill critical roles across Canada."
       />
 
       {/* Benefits */}

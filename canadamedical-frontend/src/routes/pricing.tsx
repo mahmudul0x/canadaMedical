@@ -4,7 +4,7 @@ import { Check, X, Star } from "lucide-react";
 export const Route = createFileRoute("/pricing")({
   head: () => ({
     meta: [
-      { title: "Pricing — MedConnect Canada" },
+      { title: "Pricing — CandianMdJobs" },
       { name: "description", content: "Simple, transparent pricing for Canadian physician recruitment. No hidden fees." },
     ],
   }),
@@ -116,7 +116,7 @@ function PricingPage() {
       {/* Bottom note */}
       <section className="border-t border-border py-10 text-center">
         <p className="text-sm text-muted-foreground">
-          Physicians always use MedConnect for free — no subscription needed.{" "}
+          Physicians always use CandianMdJobs for free — no subscription needed.{" "}
           <Link to="/register/physician" className="font-semibold text-primary hover:underline">
             Create a free physician profile →
           </Link>

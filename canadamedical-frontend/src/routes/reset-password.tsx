@@ -7,7 +7,7 @@ import { FloatingInput } from "@/components/site/Form";
 import { api, apiError } from "@/lib/api";
 
 export const Route = createFileRoute("/reset-password")({
-  head: () => ({ meta: [{ title: "Set New Password — MedConnect Canada" }] }),
+  head: () => ({ meta: [{ title: "Set New Password — CandianMdJobs" }] }),
   component: ResetPasswordPage,
   validateSearch: (s: Record<string, unknown>) => ({
     uid: (s.uid as string) ?? "",
@@ -59,7 +59,7 @@ function ResetPasswordPage() {
       bullets={[
         "Minimum 8 characters",
         "Link expires after use",
-        "Need help? hello@medconnect.ca",
+        "Need help? hello@CandianMdJobs.ca",
       ]}
       footerNote={
         <>

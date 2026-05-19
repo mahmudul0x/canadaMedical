@@ -118,7 +118,7 @@ class EnterpriseRequestAdminSerializer(serializers.ModelSerializer):
             'additional_services', 'budget_range', 'message', 'status',
             'custom_job_limit', 'custom_price_monthly', 'custom_features',
             'admin_notes', 'approved_by_email', 'approved_at', 'rejected_reason',
-            'revoked_by_email', 'revoked_at',
+            'revoked_by_email', 'revoked_at', 'revoked_reason',
             'custom_payment_status', 'custom_payment_link',
             'existing_plan_info',
             'created_at', 'updated_at',

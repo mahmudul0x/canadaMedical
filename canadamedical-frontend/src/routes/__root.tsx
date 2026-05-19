@@ -77,14 +77,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "MedConnect Canada — Premier Physician Recruitment" },
+      { title: "CandianMdJobs — Premier Physician Recruitment" },
       { name: "description", content: "Discover physician careers across Canada. Browse jobs by specialty and province, register your profile, and get matched with leading employers." },
-      { name: "author", content: "MedConnect Canada" },
-      { property: "og:title", content: "MedConnect Canada — Premier Physician Recruitment" },
+      { name: "author", content: "CandianMdJobs" },
+      { property: "og:title", content: "CandianMdJobs — Premier Physician Recruitment" },
       { property: "og:description", content: "Your next medical career begins here. Explore premier physician opportunities across Canada." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@MedConnectCA" },
+      { name: "twitter:site", content: "@CandianMdJobs" },
     ],
     links: [
       {

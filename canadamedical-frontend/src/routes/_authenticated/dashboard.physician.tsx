@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Briefcase, Bookmark, User as UserIcon, Settings as SettingsIcon,
   LayoutDashboard, FileText, CheckCircle2, Clock, Star, Trash2, ExternalLink,
-  LogOut, Home, PanelLeftClose, PanelLeftOpen,
+  LogOut, Home, PanelLeftClose, PanelLeftOpen, Menu, X,
   ChevronDown, ChevronUp, MapPin, Building2, Calendar, Phone, Linkedin,
   AlertTriangle, XCircle, Award, Search, Printer, Loader2, ThumbsUp, ThumbsDown,
   Pencil, Globe, Stethoscope, GraduationCap, FileCheck,
@@ -20,7 +20,7 @@ import { Logo } from "@/components/site/Logo";
 import { NotificationBell } from "@/components/site/NotificationBell";
 
 export const Route = createFileRoute("/_authenticated/dashboard/physician")({
-  head: () => ({ meta: [{ title: "Physician Dashboard — MedConnect Canada" }] }),
+  head: () => ({ meta: [{ title: "Physician Dashboard — CandianMdJobs" }] }),
   validateSearch: (s: Record<string, unknown>): { tab?: string; app?: string } => ({
     tab: typeof s.tab === "string" ? s.tab : undefined,
     app: typeof s.app === "string" ? s.app : undefined,
@@ -143,10 +143,10 @@ function PhysicianDashboard() {
   );
   const [openAppId, setOpenAppId] = useState<string | undefined>(appParam);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
 
-  // Fetch physician profile so topbar + sidebar show uploaded avatar
   const { data: physicianProfile } = useQuery<{ avatar_url?: string | null; specialty?: string }>({
     queryKey: ["physician-profile"],
     queryFn: async () => {
@@ -168,6 +168,14 @@ function PhysicianDashboard() {
     }
   }, [tabParam, appParam]);
 
+  // Close drawer on resize to desktop
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const handler = (e: MediaQueryListEvent) => { if (e.matches) setDrawerOpen(false); };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
   const currentTab = TABS.find((t) => t.id === tab) ?? TABS[0];
 
   function handleLogout() {
@@ -176,65 +184,49 @@ function PhysicianDashboard() {
     navigate({ to: "/login" });
   }
 
-  return (
-    <div className="flex h-screen flex-col overflow-hidden bg-secondary/40">
-      {/* Top bar */}
-      <header className="z-30 flex-none border-b border-border bg-card/80 backdrop-blur-xl">
-        <div className="flex items-center gap-3 px-4 py-3 lg:px-6">
-          <button
-            onClick={() => setSidebarOpen((o) => !o)}
-            className="hidden items-center justify-center rounded-lg border border-border bg-background p-1.5 text-foreground/70 transition hover:border-primary/30 hover:text-primary lg:inline-flex"
-            aria-label="Toggle sidebar"
-          >
-            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-          </button>
-          <Logo />
-          <div className="mx-4 hidden h-5 w-px bg-border lg:block" />
-          <div className="hidden flex-1 sm:block">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              Physician Portal · {currentTab.label}
-            </p>
-          </div>
-          <div className="flex flex-1 items-center justify-end gap-2">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground/70 transition hover:border-primary/30 hover:text-primary"
-            >
-              <Home className="h-3.5 w-3.5" /> Home
-            </Link>
-            <NotificationBell role="physician" />
-            <button
-              type="button"
-              onClick={() => setTab("profile")}
-              title="Edit profile"
-              className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 transition hover:bg-secondary"
-            >
-              <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-md bg-gradient-accent text-xs font-bold text-primary">
-                {avatarUrl
-                  ? <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
-                  : (user?.first_name ?? user?.email ?? "P").slice(0, 1).toUpperCase()
-                }
-              </span>
-            </button>
-          </div>
-        </div>
-      </header>
+  function switchTab(t: Tab) {
+    setTab(t);
+    setDrawerOpen(false);
+  }
 
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className={`hidden flex-none overflow-hidden border-r border-border bg-card shadow-sm transition-[width] duration-300 lg:flex lg:flex-col ${sidebarOpen ? "w-64" : "w-0 border-r-0"}`}>
-          <div className={`flex-1 overflow-y-auto transition-opacity duration-300 ${sidebarOpen ? "opacity-100 p-4" : "opacity-0"}`}>
-          <div className="mb-5 rounded-xl bg-linear-to-br from-primary/10 to-accent/10 p-4 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground shadow-md">
+  const avatarInitial = (user?.first_name ?? user?.email ?? "P").slice(0, 1).toUpperCase();
+
+  return (
+    <div className="flex h-dvh flex-col overflow-hidden bg-secondary/40">
+
+      {/* ── Mobile drawer backdrop ──────────────────────────────────────── */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+          onClick={() => setDrawerOpen(false)}
+        />
+      )}
+
+      {/* ── Mobile slide-in drawer ──────────────────────────────────────── */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-border bg-card shadow-xl transition-transform duration-300 lg:hidden ${
+          drawerOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+          <Logo size="sm" />
+          <button
+            onClick={() => setDrawerOpen(false)}
+            className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary transition"
+            aria-label="Close menu"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="mb-4 rounded-xl bg-linear-to-br from-primary/10 to-accent/10 p-4 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground shadow-md">
               {avatarUrl
                 ? <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
-                : <UserIcon className="h-7 w-7" />
+                : <UserIcon className="h-6 w-6" />
               }
             </div>
-            <p className="mt-2 text-sm font-bold text-primary">
-              Dr. {user?.first_name ?? user?.email}
-            </p>
+            <p className="mt-2 text-sm font-bold text-primary">Dr. {user?.first_name ?? user?.email}</p>
             <p className="text-xs text-muted-foreground">{displaySpecialty}</p>
           </div>
           <nav className="space-y-1">
@@ -244,11 +236,9 @@ function PhysicianDashboard() {
               return (
                 <button
                   key={t.id}
-                  onClick={() => setTab(t.id)}
+                  onClick={() => switchTab(t.id)}
                   className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                    active
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-foreground/70 hover:bg-secondary hover:text-primary"
+                    active ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/70 hover:bg-secondary hover:text-primary"
                   }`}
                 >
                   <Icon className="h-4 w-4 flex-none" /> {t.label}
@@ -256,8 +246,105 @@ function PhysicianDashboard() {
               );
             })}
           </nav>
+        </div>
+        <div className="shrink-0 border-t border-border p-4">
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground/70 hover:bg-rose-50 hover:text-rose-600 transition"
+          >
+            <LogOut className="h-4 w-4 flex-none" /> Log out
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Top bar ────────────────────────────────────────────────────────── */}
+      <header className="z-30 flex-none border-b border-border bg-card/80 backdrop-blur-xl">
+        <div className="flex h-14 items-center gap-2 px-3 lg:gap-3 lg:px-6">
+          {/* Desktop: sidebar collapse toggle */}
+          <button
+            onClick={() => setSidebarOpen((o) => !o)}
+            className="hidden items-center justify-center rounded-lg border border-border bg-background p-1.5 text-foreground/70 transition hover:border-primary/30 hover:text-primary lg:inline-flex"
+            aria-label="Toggle sidebar"
+          >
+            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+          </button>
+          {/* Mobile: hamburger */}
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="inline-flex items-center justify-center rounded-lg border border-border bg-background p-1.5 text-foreground/70 transition hover:bg-secondary lg:hidden"
+            aria-label="Open menu"
+          >
+            <Menu className="h-4 w-4" />
+          </button>
+
+          <Logo size="sm" />
+          <div className="mx-3 hidden h-5 w-px bg-border lg:block" />
+          <div className="hidden flex-1 sm:block">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Physician Portal · {currentTab.label}
+            </p>
           </div>
-          {/* Logout pinned to sidebar bottom */}
+
+          <div className="flex flex-1 items-center justify-end gap-1.5">
+            <Link
+              to="/"
+              className="hidden items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground/70 transition hover:border-primary/30 hover:text-primary sm:inline-flex"
+            >
+              <Home className="h-3.5 w-3.5" /> Home
+            </Link>
+            <Link to="/" className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background text-foreground/70 hover:text-primary transition sm:hidden">
+              <Home className="h-4 w-4" />
+            </Link>
+            <NotificationBell role="physician" />
+            <button
+              type="button"
+              onClick={() => switchTab("profile")}
+              title="Edit profile"
+              className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-border bg-background transition hover:bg-secondary"
+            >
+              {avatarUrl
+                ? <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                : <span className="text-xs font-bold text-primary">{avatarInitial}</span>
+              }
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Body ───────────────────────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* Desktop sidebar */}
+        <aside className={`hidden flex-none overflow-hidden border-r border-border bg-card shadow-sm transition-[width] duration-300 lg:flex lg:flex-col ${sidebarOpen ? "w-64" : "w-0 border-r-0"}`}>
+          <div className={`flex-1 overflow-y-auto transition-opacity duration-300 ${sidebarOpen ? "opacity-100 p-4" : "opacity-0"}`}>
+            <div className="mb-5 rounded-xl bg-linear-to-br from-primary/10 to-accent/10 p-4 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground shadow-md">
+                {avatarUrl
+                  ? <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                  : <UserIcon className="h-7 w-7" />
+                }
+              </div>
+              <p className="mt-2 text-sm font-bold text-primary">Dr. {user?.first_name ?? user?.email}</p>
+              <p className="text-xs text-muted-foreground">{displaySpecialty}</p>
+            </div>
+            <nav className="space-y-1">
+              {TABS.map((t) => {
+                const Icon = t.icon;
+                const active = tab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                      active ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/70 hover:bg-secondary hover:text-primary"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 flex-none" /> {t.label}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
           <div className="shrink-0 border-t border-border p-4">
             <button
               onClick={handleLogout}
@@ -269,16 +356,37 @@ function PhysicianDashboard() {
         </aside>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto px-4 py-8 lg:px-8">
-          <div className="space-y-6">
-          {tab === "overview" && <OverviewTab />}
-          {tab === "applications" && <ApplicationsTab openAppId={openAppId} onAppOpened={() => setOpenAppId(undefined)} />}
-          {tab === "saved" && <SavedTab />}
-          {tab === "profile" && <ProfileTab />}
-          {tab === "settings" && <SettingsTab />}
+        <main className="flex-1 overflow-y-auto px-3 py-5 pb-24 lg:px-8 lg:py-8 lg:pb-8">
+          <div className="space-y-5 lg:space-y-6">
+            {tab === "overview" && <OverviewTab />}
+            {tab === "applications" && <ApplicationsTab openAppId={openAppId} onAppOpened={() => setOpenAppId(undefined)} />}
+            {tab === "saved" && <SavedTab />}
+            {tab === "profile" && <ProfileTab />}
+            {tab === "settings" && <SettingsTab />}
           </div>
         </main>
       </div>
+
+      {/* ── Mobile bottom tab bar ───────────────────────────────────────────── */}
+      <nav className="fixed bottom-0 inset-x-0 z-30 flex border-t border-border bg-card/95 backdrop-blur-xl lg:hidden">
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10px] font-semibold transition-colors ${
+                active ? "text-primary" : "text-muted-foreground"
+              }`}
+            >
+              <Icon className={`h-5 w-5 ${active ? "text-primary" : "text-muted-foreground"}`} />
+              <span className="leading-none">{t.label.split(" ")[0]}</span>
+            </button>
+          );
+        })}
+      </nav>
+
     </div>
   );
 }
@@ -508,8 +616,8 @@ function ApplicationCard({
       link.href = url;
       const disposition = response.headers["content-disposition"] as string | undefined;
       const filename = disposition
-        ? disposition.split("filename=")[1]?.replace(/"/g, "") ?? `MedConnect_Job_${app.job_id}.pdf`
-        : `MedConnect_Job_${app.job_id}.pdf`;
+        ? disposition.split("filename=")[1]?.replace(/"/g, "") ?? `CandianMdJobs_Job_${app.job_id}.pdf`
+        : `CandianMdJobs_Job_${app.job_id}.pdf`;
       link.setAttribute("download", filename);
       document.body.appendChild(link);
       link.click();

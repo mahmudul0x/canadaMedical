@@ -50,6 +50,7 @@ interface EnterpriseRequest {
   rejected_reason?: string;
   revoked_by_email?: string;
   revoked_at?: string;
+  revoked_reason?: string;
   custom_payment_status?: "pending_payment" | "paid" | "free" | "revoked" | null;
   custom_payment_link?: string | null;
   existing_plan_info?: ExistingPlanInfo | null;
@@ -123,6 +124,8 @@ function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest
   const [validUntil, setValidUntil] = useState("");
   const [adminNotes, setAdminNotes] = useState(request.admin_notes ?? "");
   const [loading, setLoading] = useState(false);
+  const [revokeModal, setRevokeModal] = useState(false);
+  const [rejectModal, setRejectModal] = useState(false);
 
   async function handleApprove() {
     setLoading(true);
@@ -143,13 +146,27 @@ function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest
     }
   }
 
-  async function handleReject() {
-    const reason = prompt("Reason for rejection (optional):");
-    if (reason === null) return;
+  async function handleReject(reason: string) {
     setLoading(true);
     try {
       await api.patch(`/api/subscriptions/admin/enterprise/requests/${request.id}/reject/`, { rejected_reason: reason });
       toast.success("Request rejected.");
+      setRejectModal(false);
+      onDone();
+    } catch (err) {
+      toast.error(apiError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRevoke(reason: string) {
+    setLoading(true);
+    try {
+      await api.patch(`/api/subscriptions/admin/enterprise/requests/${request.id}/revoke/`, { revoked_reason: reason });
+      const alreadyPaid = request.custom_payment_status === "paid";
+      toast.success(alreadyPaid ? "Plan revoked and refund issued." : "Approval revoked. Payment link deactivated.");
+      setRevokeModal(false);
       onDone();
     } catch (err) {
       toast.error(apiError(err));
@@ -171,25 +188,40 @@ function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest
     }
   }
 
-  async function handleRevoke() {
-    const alreadyPaid = request.custom_payment_status === "paid";
-    const confirmMsg = alreadyPaid
-      ? "⚠️ This customer has ALREADY PAID. Revoking will deactivate their plan.\n\nAre you sure?"
-      : "Revoke this approval? The payment link will be deactivated.\n\nAre you sure?";
-    if (!window.confirm(confirmMsg)) return;
-    setLoading(true);
-    try {
-      await api.patch(`/api/subscriptions/admin/enterprise/requests/${request.id}/revoke/`);
-      toast.success(alreadyPaid ? "Plan revoked." : "Approval revoked. Payment link deactivated.");
-      onDone();
-    } catch (err) {
-      toast.error(apiError(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
+    <>
+    {/* ── Revoke confirmation modal ─────────────────────────────────────── */}
+    {revokeModal && (
+      <ReasonModal
+        title={request.custom_payment_status === "paid" ? "Revoke Plan & Issue Refund" : "Revoke Approval"}
+        description={request.custom_payment_status === "paid"
+          ? "This employer has already paid. Revoking will cancel their plan and issue a full refund via Stripe."
+          : "This will deactivate the payment link. The employer will no longer be able to pay for this plan."}
+        reasonLabel="Reason for revocation (optional)"
+        reasonPlaceholder="e.g. Fraudulent activity, policy violation, employer request…"
+        confirmLabel={request.custom_payment_status === "paid" ? "Revoke & Refund" : "Revoke Approval"}
+        confirmStyle="danger"
+        loading={loading}
+        onConfirm={(reason) => handleRevoke(reason)}
+        onCancel={() => setRevokeModal(false)}
+      />
+    )}
+
+    {/* ── Reject confirmation modal ──────────────────────────────────────── */}
+    {rejectModal && (
+      <ReasonModal
+        title="Reject Enterprise Request"
+        description="The employer will be notified that their request was not approved. You can provide a reason below."
+        reasonLabel="Reason for rejection (optional)"
+        reasonPlaceholder="e.g. Budget doesn't meet minimum, incomplete application…"
+        confirmLabel="Reject Request"
+        confirmStyle="warning"
+        loading={loading}
+        onConfirm={(reason) => handleReject(reason)}
+        onCancel={() => setRejectModal(false)}
+      />
+    )}
+
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
@@ -396,10 +428,16 @@ function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest
           <div className="flex flex-wrap gap-2">
             {/* Revoked */}
             {request.status === "revoked" && (
-              <span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-600">
-                <RotateCcw className="h-4 w-4" /> Approval Revoked
-                {request.revoked_by_email && <span className="text-xs font-normal text-slate-400">by {request.revoked_by_email}</span>}
-              </span>
+              <div className="flex flex-col gap-1.5">
+                <span className="inline-flex items-center gap-2 rounded-xl bg-slate-100 border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-600">
+                  <RotateCcw className="h-4 w-4" /> Approval Revoked
+                  {request.revoked_by_email && <span className="text-xs font-normal text-slate-400">by {request.revoked_by_email}</span>}
+                  {request.revoked_at && <span className="text-xs font-normal text-slate-400">· {format(new Date(request.revoked_at), "MMM d, yyyy")}</span>}
+                </span>
+                {request.revoked_reason && (
+                  <p className="text-xs text-slate-500 px-1"><span className="font-semibold">Reason:</span> {request.revoked_reason}</p>
+                )}
+              </div>
             )}
 
             {/* Already approved */}
@@ -414,27 +452,39 @@ function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest
                   {request.custom_payment_status === "paid" ? "Paid & Active" : "Approved — Awaiting Payment"}
                 </span>
                 {request.custom_payment_status === "pending_payment" && (
-                  <button onClick={handleRevoke} disabled={loading}
+                  <button onClick={() => setRevokeModal(true)} disabled={loading}
                     className="ml-auto inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100 transition disabled:opacity-60">
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                    <RotateCcw className="h-4 w-4" />
                     Revoke Approval
                   </button>
                 )}
                 {request.custom_payment_status === "paid" && (
-                  <button onClick={handleRevoke} disabled={loading}
+                  <button onClick={() => setRevokeModal(true)} disabled={loading}
                     className="ml-auto inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 transition disabled:opacity-60">
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                    <AlertTriangle className="h-4 w-4" />
                     Revoke Plan
                   </button>
                 )}
               </>
             )}
 
+            {/* Rejected */}
+            {request.status === "rejected" && (
+              <div className="flex flex-col gap-1.5">
+                <span className="inline-flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600">
+                  <XCircle className="h-4 w-4" /> Request Rejected
+                </span>
+                {request.rejected_reason && (
+                  <p className="text-xs text-slate-500 px-1"><span className="font-semibold">Reason:</span> {request.rejected_reason}</p>
+                )}
+              </div>
+            )}
+
             {/* Pending / Reviewing / Rejected */}
             {request.status !== "approved" && request.status !== "revoked" && (
               <>
                 {request.status !== "rejected" && (
-                  <button onClick={handleReject} disabled={loading}
+                  <button onClick={() => setRejectModal(true)} disabled={loading}
                     className="rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition disabled:opacity-60">
                     Reject
                   </button>
@@ -453,6 +503,82 @@ function ApproveModal({ request, onClose, onDone }: { request: EnterpriseRequest
               </>
             )}
           </div>
+        </div>
+      </div>
+    </div>
+    </>
+  );
+}
+
+// ─── ReasonModal ─────────────────────────────────────────────────────────────
+
+function ReasonModal({
+  title, description, reasonLabel, reasonPlaceholder,
+  confirmLabel, confirmStyle, loading,
+  onConfirm, onCancel,
+}: {
+  title: string;
+  description: string;
+  reasonLabel: string;
+  reasonPlaceholder: string;
+  confirmLabel: string;
+  confirmStyle: "danger" | "warning";
+  loading: boolean;
+  onConfirm: (reason: string) => void;
+  onCancel: () => void;
+}) {
+  const [reason, setReason] = useState("");
+
+  const btnClass = confirmStyle === "danger"
+    ? "bg-rose-600 hover:bg-rose-700 text-white"
+    : "bg-amber-600 hover:bg-amber-700 text-white";
+
+  return (
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl">
+        {/* Header */}
+        <div className="flex items-start gap-3 border-b border-border px-6 py-4">
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${confirmStyle === "danger" ? "bg-rose-100" : "bg-amber-100"}`}>
+            <AlertTriangle className={`h-5 w-5 ${confirmStyle === "danger" ? "text-rose-600" : "text-amber-600"}`} />
+          </div>
+          <div>
+            <h3 className="font-bold text-foreground">{title}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{description}</p>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-foreground mb-1.5">{reasonLabel}</label>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder={reasonPlaceholder}
+              rows={3}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15 resize-none"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">This reason will be saved to the request record.</p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 border-t border-border px-6 py-4">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-secondary transition disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(reason)}
+            disabled={loading}
+            className={`inline-flex items-center gap-2 rounded-xl px-5 py-2 text-sm font-bold transition disabled:opacity-60 ${btnClass}`}
+          >
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+            {confirmLabel}
+          </button>
         </div>
       </div>
     </div>

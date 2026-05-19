@@ -10,7 +10,7 @@ import {
   CheckCircle2, AlertCircle, SlidersHorizontal, ExternalLink,
   Search, Filter, TrendingUp, BarChart2, Star, Clock,
   Award, XCircle, RefreshCw, ChevronUp,
-  CreditCard, Zap, AlertTriangle, Loader2, Printer, ArrowUpRight,
+  CreditCard, Zap, AlertTriangle, Loader2, Printer, ArrowUpRight, Menu,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
@@ -24,7 +24,7 @@ import { Logo } from "@/components/site/Logo";
 import { NotificationBell } from "@/components/site/NotificationBell";
 
 export const Route = createFileRoute("/_authenticated/dashboard/employer")({
-  head: () => ({ meta: [{ title: "Employer Dashboard — MedConnect Canada" }] }),
+  head: () => ({ meta: [{ title: "Employer Dashboard — CandianMdJobs" }] }),
   validateSearch: (s: Record<string, unknown>): { subscription?: string; session_id?: string; tab?: string; enterprise?: string } => ({
     subscription: typeof s.subscription === "string" ? s.subscription : undefined,
     session_id: typeof s.session_id === "string" ? s.session_id : undefined,
@@ -237,6 +237,7 @@ function EmployerDashboard() {
     VALID_TABS.includes(tabParam as Tab) ? (tabParam as Tab) : "overview"
   );
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const { user, logout, isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -348,21 +349,74 @@ function EmployerDashboard() {
     navigate({ to: "/login" as never }).catch(() => { window.location.href = "/login"; });
   }
 
+  // Close drawer on resize to desktop
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const handler = (e: MediaQueryListEvent) => { if (e.matches) setDrawerOpen(false); };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  function switchTab(t: Tab) {
+    setTab(t);
+    setDrawerOpen(false);
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Sidebar */}
-      <aside className={`flex flex-col border-r border-border bg-card transition-[width] duration-200 shrink-0 ${sidebarOpen ? "w-56" : "w-14"}`}>
+    <div className="flex h-dvh overflow-hidden bg-background">
 
-        {/* Logo area — only when open */}
-        <div className="flex h-14 shrink-0 items-center border-b border-border px-4">
-          {sidebarOpen && (
-            <div className="[&_a]:text-foreground [&_img]:h-6">
-              <Logo />
-            </div>
-          )}
+      {/* ── Mobile drawer backdrop ──────────────────────────────────────── */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+          onClick={() => setDrawerOpen(false)}
+        />
+      )}
+
+      {/* ── Mobile slide-in drawer ──────────────────────────────────────── */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-border bg-card shadow-xl transition-transform duration-300 lg:hidden ${
+          drawerOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+          <Logo size="sm" />
+          <button onClick={() => setDrawerOpen(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary transition" aria-label="Close menu">
+            <X className="h-4 w-4" />
+          </button>
         </div>
+        <nav className="flex-1 overflow-y-auto space-y-0.5 p-3">
+          {TABS.map(({ id, label, icon: Icon }) => {
+            const active = tab === id;
+            return (
+              <button
+                key={id}
+                onClick={() => switchTab(id)}
+                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                  active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="truncate">{label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <div className="shrink-0 border-t border-border p-3">
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition"
+          >
+            <LogOut className="h-4 w-4 shrink-0" /> Sign Out
+          </button>
+        </div>
+      </aside>
 
-        {/* Nav items */}
+      {/* ── Desktop sidebar ─────────────────────────────────────────────── */}
+      <aside className={`hidden lg:flex flex-col border-r border-border bg-card transition-[width] duration-200 shrink-0 ${sidebarOpen ? "w-56" : "w-14"}`}>
+        <div className="flex h-14 shrink-0 items-center border-b border-border px-4">
+          {sidebarOpen && <Logo size="sm" />}
+        </div>
         <nav className="flex-1 overflow-y-auto space-y-0.5 p-2">
           {TABS.map(({ id, label, icon: Icon }) => {
             const active = tab === id;
@@ -381,8 +435,6 @@ function EmployerDashboard() {
             );
           })}
         </nav>
-
-        {/* Footer */}
         <div className="shrink-0 border-t border-border p-2">
           <button
             onClick={handleLogout}
@@ -396,21 +448,31 @@ function EmployerDashboard() {
         </div>
       </aside>
 
-      {/* Main */}
+      {/* ── Main content ────────────────────────────────────────────────── */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center gap-3 border-b border-border bg-card px-4">
-          {/* Sidebar toggle — always visible in header */}
+
+        {/* Topbar */}
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-3 lg:px-4">
+          {/* Desktop: sidebar collapse */}
           <button
             onClick={() => setSidebarOpen(o => !o)}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary transition"
+            className="hidden lg:flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary transition"
             title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
           >
             {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
           </button>
+          {/* Mobile: hamburger */}
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="flex lg:hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary transition"
+            aria-label="Open menu"
+          >
+            <Menu className="h-4 w-4" />
+          </button>
 
-          <h1 className="flex-1 text-sm font-bold text-foreground">{currentTab.label}</h1>
+          <h1 className="flex-1 truncate text-sm font-bold text-foreground">{currentTab.label}</h1>
+
           <div className="flex items-center gap-1.5">
-            {/* Home icon — clean, no label */}
             <Link
               to="/"
               title="Go to Homepage"
@@ -422,20 +484,22 @@ function EmployerDashboard() {
             <button
               type="button"
               onClick={() => setTab("profile")}
-              title="Edit profile"
-              className="flex items-center gap-2 rounded-xl border border-border bg-secondary/50 px-3 py-1.5 transition hover:bg-secondary"
+              title="Company profile"
+              className="flex items-center gap-2 rounded-xl border border-border bg-secondary/50 px-2 py-1.5 transition hover:bg-secondary"
             >
-              <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+              <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-primary text-[10px] font-bold text-primary-foreground shrink-0">
                 {employerLogo
                   ? <img src={employerLogo} alt={displayName} className="h-full w-full object-cover" />
                   : (displayName[0] ?? "E").toUpperCase()
                 }
               </div>
-              <span className="text-xs font-semibold text-foreground hidden sm:block">{displayName}</span>
+              <span className="hidden text-xs font-semibold text-foreground sm:block max-w-24 truncate">{displayName}</span>
             </button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-5 lg:p-7">
+
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto p-4 pb-24 lg:p-7 lg:pb-7">
           {tab === "overview" && <Overview onNavigate={setTab} subscription={subscription ?? null} enterpriseRequest={enterpriseRequest ?? null} />}
           {tab === "jobs" && <MyJobs onNavigate={setTab} />}
           {tab === "post" && <PostJob onPosted={() => setTab("jobs")} subscription={subscription ?? null} onNavigate={setTab} />}
@@ -444,6 +508,26 @@ function EmployerDashboard() {
           {tab === "billing" && <BillingHistory subscription={subscription ?? null} />}
         </main>
       </div>
+
+      {/* ── Mobile bottom tab bar ───────────────────────────────────────── */}
+      <nav className="fixed bottom-0 inset-x-0 z-30 flex border-t border-border bg-card/95 backdrop-blur-xl lg:hidden">
+        {TABS.map(({ id, label, icon: Icon }) => {
+          const active = tab === id;
+          return (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10px] font-semibold transition-colors ${
+                active ? "text-primary" : "text-muted-foreground"
+              }`}
+            >
+              <Icon className={`h-5 w-5 ${active ? "text-primary" : "text-muted-foreground"}`} />
+              <span className="leading-none">{label.split(" ")[0]}</span>
+            </button>
+          );
+        })}
+      </nav>
+
     </div>
   );
 }
@@ -470,22 +554,32 @@ function Overview({ onNavigate, subscription, enterpriseRequest }: { onNavigate:
     }
   }
 
-  const { data: jobs, isLoading: jobsLoading } = useQuery<EmpJob[]>({
-    queryKey: ["my-jobs"],
-    queryFn: async () => { const r = await api.get("/api/jobs/my-jobs/"); const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.results ?? []); },
+  const { data: jobs, status: jobsStatus } = useQuery<EmpJob[]>({
+    queryKey: ["overview-my-jobs"],
+    queryFn: async () => {
+      const r = await api.get("/api/jobs/my-jobs/");
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : (d?.results ?? []);
+    },
     retry: 1,
-    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
-  const { data: allApps, isLoading: appsLoading } = useQuery<ReceivedApp[]>({
-    queryKey: ["employer-all-applications"],
-    queryFn: async () => { const r = await api.get("/api/jobs/employer-applications/"); const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : (d?.results ?? []); },
+  const { data: allApps, status: appsStatus } = useQuery<ReceivedApp[]>({
+    queryKey: ["overview-employer-applications"],
+    queryFn: async () => {
+      const r = await api.get("/api/jobs/employer-applications/");
+      const d = r.data?.data ?? r.data;
+      return Array.isArray(d) ? d : (d?.results ?? []);
+    },
     retry: 1,
-    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 
   const list = jobs ?? [];
   const apps = allApps ?? [];
-  const isLoading = jobsLoading || appsLoading;
+  const isLoading = jobsStatus === "pending" && appsStatus === "pending";
 
   const activeJobs   = list.filter(j => j.is_approved && j.is_active);
   const pendingJobs  = list.filter(j => !j.is_approved && j.is_active);
@@ -552,11 +646,18 @@ function Overview({ onNavigate, subscription, enterpriseRequest }: { onNavigate:
         {/* Bottom section: plan info bar */}
         {subscription && (() => {
           const isCustomActive = subscription.is_custom && subscription.custom_payment_status !== "pending_payment";
-          const price = isCustomActive && subscription.custom_price_monthly ? parseFloat(subscription.custom_price_monthly) : parseFloat(subscription.price_monthly);
+          const rawPrice = isCustomActive && subscription.custom_price_monthly
+            ? parseFloat(subscription.custom_price_monthly)
+            : parseFloat(subscription.price_monthly);
           const limit = isCustomActive ? subscription.custom_job_limit : subscription.job_post_limit;
           const used = subscription.jobs_posted ?? 0;
           const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
           const isActive = subscription.status === "active";
+          // A plan is truly "free" only if it's not enterprise/custom and price is 0
+          const isPaidEnterprise = subscription.plan_type === "enterprise" || subscription.plan_type === "enterprise_custom" || isCustomActive;
+          const isFreeBasic = !isPaidEnterprise && rawPrice === 0;
+          // Expiry: show if there's a period end date and the plan is not free
+          const periodEnd = subscription.current_period_end ? new Date(subscription.current_period_end) : null;
           return (
             <div className="relative flex flex-col gap-3 p-6 sm:flex-row sm:items-center sm:gap-6">
               {/* Plan name + status */}
@@ -579,15 +680,17 @@ function Overview({ onNavigate, subscription, enterpriseRequest }: { onNavigate:
               {/* Price */}
               <div className="shrink-0">
                 <span className="text-sm font-semibold text-white">
-                  {price > 0 ? `$${price.toLocaleString("en-CA", { minimumFractionDigits: 2 })}/mo` : "Free"}
+                  {rawPrice > 0
+                    ? `$${rawPrice.toLocaleString("en-CA", { minimumFractionDigits: 2 })}/mo`
+                    : isFreeBasic ? "Free" : "Custom"}
                 </span>
               </div>
 
               {/* Vertical rule */}
-              {limit != null && <div className="hidden sm:block w-px h-6 shrink-0" style={{ background: "oklch(1 0 0 / 0.12)" }} />}
+              <div className="hidden sm:block w-px h-6 shrink-0" style={{ background: "oklch(1 0 0 / 0.12)" }} />
 
-              {/* Job usage bar */}
-              {limit != null && (
+              {/* Job slots */}
+              {limit != null ? (
                 <div className="flex flex-1 items-center gap-3 min-w-0">
                   <span className="text-[11px] font-semibold shrink-0" style={{ color: "oklch(0.985 0.004 250 / 0.50)" }}>
                     Job slots
@@ -603,10 +706,30 @@ function Overview({ onNavigate, subscription, enterpriseRequest }: { onNavigate:
                   </div>
                   <span className="text-[11px] font-bold shrink-0 text-white">{used} / {limit}</span>
                 </div>
+              ) : isPaidEnterprise ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[11px] font-semibold" style={{ color: "oklch(0.985 0.004 250 / 0.50)" }}>Job slots</span>
+                  <span className="text-[11px] font-bold text-white">{used} posted · <span style={{ color: "oklch(0.78 0.13 175)" }}>Unlimited</span></span>
+                </div>
+              ) : null}
+
+              {/* Expiry / renewal date */}
+              {periodEnd && !isFreeBasic && (
+                <>
+                  <div className="hidden sm:block w-px h-6 shrink-0" style={{ background: "oklch(1 0 0 / 0.12)" }} />
+                  <div className="shrink-0">
+                    <span className="text-[11px]" style={{ color: "oklch(0.985 0.004 250 / 0.50)" }}>
+                      {subscription.cancel_at_period_end ? "Cancels" : "Renews"}
+                    </span>
+                    <span className="ml-1.5 text-[11px] font-bold text-white">
+                      {format(periodEnd, "MMM d, yyyy")}
+                    </span>
+                  </div>
+                </>
               )}
 
-              {/* Upgrade nudge for free/low plans */}
-              {!isCustomActive && price === 0 && (
+              {/* Upgrade nudge — only for genuinely free basic plan */}
+              {isFreeBasic && (
                 <>
                   <div className="hidden sm:block w-px h-6 shrink-0" style={{ background: "oklch(1 0 0 / 0.12)" }} />
                   <button
@@ -619,29 +742,22 @@ function Overview({ onNavigate, subscription, enterpriseRequest }: { onNavigate:
                 </>
               )}
 
-              {/* Cancellation notice for paid plans */}
-              {price > 0 && subscription.cancel_at_period_end && (
+              {/* Cancellation notice — shown separately from expiry row above */}
+              {!isFreeBasic && subscription.cancel_at_period_end && (
                 <>
                   <div className="hidden sm:block w-px h-6 shrink-0" style={{ background: "oklch(1 0 0 / 0.12)" }} />
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[11px] font-semibold" style={{ color: "oklch(0.85 0.16 75)" }}>
-                      Cancels {subscription.current_period_end
-                        ? new Date(subscription.current_period_end).toLocaleDateString("en-CA")
-                        : "soon"}
-                    </span>
-                    <button
-                      onClick={() => onNavigate("billing")}
-                      className="rounded-lg px-2.5 py-1 text-[10px] font-bold transition-all hover:scale-[1.03]"
-                      style={{ background: "oklch(0.78 0.13 175 / 0.20)", color: "oklch(0.78 0.13 175)", border: "1px solid oklch(0.78 0.13 175 / 0.30)" }}
-                    >
-                      Reactivate
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => onNavigate("billing")}
+                    className="rounded-lg px-2.5 py-1 text-[10px] font-bold transition-all hover:scale-[1.03]"
+                    style={{ background: "oklch(0.78 0.13 175 / 0.20)", color: "oklch(0.78 0.13 175)", border: "1px solid oklch(0.78 0.13 175 / 0.30)" }}
+                  >
+                    Reactivate
+                  </button>
                 </>
               )}
 
-              {/* Manage plan link for active paid plans */}
-              {price > 0 && !subscription.cancel_at_period_end && subscription.has_stripe_subscription && (
+              {/* Manage plan link for active non-free plans */}
+              {!isFreeBasic && !subscription.cancel_at_period_end && subscription.has_stripe_subscription && (
                 <>
                   <div className="hidden sm:block w-px h-6 shrink-0" style={{ background: "oklch(1 0 0 / 0.12)" }} />
                   <button
@@ -1180,20 +1296,20 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
       {/* ── Summary bar ──────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Active",       value: activeCount,  color: "text-emerald-600", bg: "bg-emerald-50",  icon: CheckCircle2 },
-          { label: "Pending",      value: pendingCount, color: "text-amber-600",   bg: "bg-amber-50",    icon: Clock        },
-          { label: "Closed",       value: closedCount,  color: "text-slate-500",   bg: "bg-slate-100",   icon: XCircle      },
-          { label: "Total Apps",   value: totalApps,    color: "text-blue-600",    bg: "bg-blue-50",     icon: Users        },
-        ].map(s => {
-          const Icon = s.icon;
+          { label: "Active",     value: activeCount,  color: "text-emerald-600", bg: "bg-emerald-50",  icon: CheckCircle2 },
+          { label: "Pending",    value: pendingCount, color: "text-amber-600",   bg: "bg-amber-50",    icon: Clock        },
+          { label: "Closed",     value: closedCount,  color: "text-slate-500",   bg: "bg-slate-100",   icon: XCircle      },
+          { label: "Total Apps", value: totalApps,    color: "text-blue-600",    bg: "bg-blue-50",     icon: Users        },
+        ].map(stat => {
+          const Icon = stat.icon;
           return (
-            <div key={s.label} className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
-              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${s.bg}`}>
-                <Icon className={`h-4 w-4 ${s.color}`} />
+            <div key={stat.label} className="flex items-center gap-2.5 rounded-2xl border border-border bg-card px-3 py-3 sm:px-4 shadow-sm">
+              <div className={`flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl ${stat.bg}`}>
+                <Icon className={`h-4 w-4 ${stat.color}`} />
               </div>
-              <div>
-                <p className={`text-xl font-extrabold ${s.color}`}>{s.value}</p>
-                <p className="text-[11px] font-semibold text-muted-foreground">{s.label}</p>
+              <div className="min-w-0">
+                <p className={`text-lg sm:text-xl font-extrabold leading-tight ${stat.color}`}>{stat.value}</p>
+                <p className="text-[10px] sm:text-[11px] font-semibold text-muted-foreground truncate">{stat.label}</p>
               </div>
             </div>
           );
@@ -1202,13 +1318,13 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
 
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-border bg-card shadow-sm">
-        {/* Status tab bar */}
-        <div className="flex items-center gap-1 border-b border-border px-4 pt-3 pb-0">
+        {/* Status tab bar + Post Job button */}
+        <div className="flex items-center gap-1 border-b border-border px-3 pt-3 pb-0 sm:px-4 overflow-x-auto scrollbar-none">
           {STATUS_TABS.map(t => (
             <button
               key={t.value}
               onClick={() => setFilterStatus(t.value)}
-              className={`relative mb-[-1px] px-3.5 pb-3 pt-1 text-sm font-semibold transition-colors ${
+              className={`relative mb-[-1px] shrink-0 px-3 pb-3 pt-1 text-sm font-semibold transition-colors ${
                 filterStatus === t.value
                   ? "border-b-2 border-accent text-accent"
                   : "text-muted-foreground hover:text-foreground"
@@ -1224,19 +1340,21 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
               )}
             </button>
           ))}
-          {isFetching && <span className="ml-auto mb-2"><InlineSpinner label="" /></span>}
+          {isFetching && <span className="ml-2 mb-2 shrink-0"><InlineSpinner label="" /></span>}
           <button
             onClick={() => onNavigate("post")}
-            className="ml-auto mb-2 inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
+            className="ml-auto mb-2 shrink-0 inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
             style={{ background: "oklch(0.78 0.13 175)", color: "oklch(0.18 0.05 260)" }}
           >
-            <FilePlus2 className="h-3.5 w-3.5" /> Post Job
+            <FilePlus2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Post Job</span>
+            <span className="sm:hidden">Post</span>
           </button>
         </div>
 
         {/* Search + filters */}
-        <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
+        <div className="flex flex-col gap-2.5 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:p-4">
+          <div className="relative flex-1 min-w-0 sm:min-w-[200px]">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             <input
               value={search}
@@ -1245,21 +1363,23 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
               className="w-full rounded-xl border border-border bg-background py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
             />
           </div>
-          <select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)}
-            className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 sm:w-44">
-            <option value="">All specialties</option>
-            {SPECIALTIES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-          <select value={filterType} onChange={e => setFilterType(e.target.value)}
-            className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 sm:w-40">
-            <option value="">All types</option>
-            {JOB_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
-          {hasFilters && (
-            <button onClick={clearFilters} className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-rose-600 transition shrink-0">
-              <X className="h-3.5 w-3.5" /> Clear
-            </button>
-          )}
+          <div className="flex gap-2 flex-wrap">
+            <select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)}
+              className="flex-1 min-w-[130px] rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 sm:w-44 sm:flex-none">
+              <option value="">All specialties</option>
+              {SPECIALTIES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)}
+              className="flex-1 min-w-[120px] rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 sm:w-40 sm:flex-none">
+              <option value="">All types</option>
+              {JOB_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            {hasFilters && (
+              <button onClick={clearFilters} className="inline-flex items-center gap-1 rounded-xl border border-border px-3 py-2.5 text-xs font-semibold text-muted-foreground hover:text-rose-600 hover:border-rose-300 transition shrink-0">
+                <X className="h-3.5 w-3.5" /> Clear
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1267,7 +1387,7 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
       {isLoading ? (
         <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-24 animate-pulse rounded-2xl bg-secondary" />)}</div>
       ) : !jobs?.length ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card p-14 text-center">
+        <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-12 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary">
             <Briefcase className="h-6 w-6 text-muted-foreground/40" />
           </div>
@@ -1293,9 +1413,9 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
             return (
               <div key={j.id} className={`rounded-2xl border bg-card shadow-sm transition-all ${isClosed ? "border-border opacity-75" : "border-border hover:border-accent/30 hover:shadow-md"}`}>
                 {/* Main row */}
-                <div className="flex items-start gap-4 p-4 sm:items-center">
-                  {/* Status indicator */}
-                  <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:mt-0 ${
+                <div className="flex items-start gap-3 p-3 sm:gap-4 sm:p-4">
+                  {/* Status icon */}
+                  <div className={`mt-0.5 flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl ${
                     isLive ? "bg-emerald-50" : isPending ? "bg-amber-50" : "bg-slate-100"
                   }`}>
                     <Briefcase className={`h-4 w-4 ${isLive ? "text-emerald-600" : isPending ? "text-amber-600" : "text-slate-400"}`} />
@@ -1303,8 +1423,8 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
 
                   {/* Title + meta */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-bold text-primary truncate">{j.title}</span>
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <span className="font-bold text-primary truncate max-w-[180px] sm:max-w-none">{j.title}</span>
                       <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
                         isLive    ? "bg-emerald-100 text-emerald-700"
                         : isPending ? "bg-amber-100 text-amber-700"
@@ -1313,16 +1433,22 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
                         {isLive ? "LIVE" : isPending ? "PENDING" : "CLOSED"}
                       </span>
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                       {j.specialty_display && <span>{j.specialty_display}</span>}
                       {j.location_display && <><span>·</span><span className="flex items-center gap-0.5"><MapPin className="h-3 w-3" />{j.location_display}</span></>}
-                      {j.job_type_display && <><span>·</span><span>{j.job_type_display}</span></>}
-                      {j.created_at && <><span>·</span><span>Posted {format(new Date(j.created_at), "MMM d, yyyy")}</span></>}
+                      {j.job_type_display && <><span className="hidden sm:inline">·</span><span className="hidden sm:inline">{j.job_type_display}</span></>}
+                      {j.created_at && <><span className="hidden sm:inline">·</span><span className="hidden sm:inline">Posted {format(new Date(j.created_at), "MMM d, yyyy")}</span></>}
+                    </div>
+                    {/* Mobile stats inline under title */}
+                    <div className="mt-1.5 flex items-center gap-3 sm:hidden">
+                      <span className="text-[11px] font-semibold text-foreground">{j.applications_count ?? 0} <span className="font-normal text-muted-foreground">apps</span></span>
+                      <span className="text-[11px] font-semibold text-foreground">{j.views_count ?? 0} <span className="font-normal text-muted-foreground">views</span></span>
+                      <span className="text-[11px] font-semibold text-foreground">{convRate}% <span className="font-normal text-muted-foreground">conv</span></span>
                     </div>
                   </div>
 
-                  {/* Stats */}
-                  <div className="hidden items-center gap-5 sm:flex shrink-0">
+                  {/* Desktop stats */}
+                  <div className="hidden items-center gap-4 sm:flex shrink-0">
                     <div className="text-center">
                       <p className="text-base font-extrabold text-foreground">{j.applications_count ?? 0}</p>
                       <p className="text-[10px] font-semibold text-muted-foreground">Apps</p>
@@ -1338,11 +1464,11 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
                     <Link
                       to="/jobs/$jobId"
                       params={{ jobId: String(j.id) }}
-                      className="rounded-lg p-2 text-muted-foreground transition hover:bg-secondary hover:text-primary"
+                      className="rounded-lg p-1.5 sm:p-2 text-muted-foreground transition hover:bg-secondary hover:text-primary"
                       title="View public listing"
                     >
                       <Eye className="h-4 w-4" />
@@ -1351,7 +1477,7 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
                       <button
                         onClick={() => close.mutate(j.id)}
                         disabled={isMutating}
-                        className="rounded-lg p-2 text-amber-500 transition hover:bg-amber-50"
+                        className="rounded-lg p-1.5 sm:p-2 text-amber-500 transition hover:bg-amber-50"
                         title="Close job"
                       >
                         <XCircle className="h-4 w-4" />
@@ -1361,7 +1487,7 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
                       <button
                         onClick={() => reopen.mutate(j.id)}
                         disabled={isMutating}
-                        className="rounded-lg p-2 text-emerald-600 transition hover:bg-emerald-50"
+                        className="rounded-lg p-1.5 sm:p-2 text-emerald-600 transition hover:bg-emerald-50"
                         title="Reopen job"
                       >
                         <RefreshCw className="h-4 w-4" />
@@ -1370,21 +1496,21 @@ function MyJobs({ onNavigate }: { onNavigate: (tab: Tab) => void }) {
                     <button
                       onClick={() => duplicate.mutate(j.id)}
                       disabled={isMutating}
-                      className="rounded-lg p-2 text-blue-500 transition hover:bg-blue-50"
+                      className="hidden sm:block rounded-lg p-2 text-blue-500 transition hover:bg-blue-50"
                       title="Duplicate job"
                     >
                       <Download className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => setConfirmDelete(j)}
-                      className="rounded-lg p-2 text-rose-500 transition hover:bg-rose-50"
+                      className="rounded-lg p-1.5 sm:p-2 text-rose-500 transition hover:bg-rose-50"
                       title="Delete job"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => setExpandedJob(isExpanded ? null : j.id)}
-                      className="rounded-lg p-2 text-muted-foreground transition hover:bg-secondary"
+                      className="rounded-lg p-1.5 sm:p-2 text-muted-foreground transition hover:bg-secondary"
                     >
                       {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
@@ -1497,7 +1623,7 @@ function PostJob({ onPosted, subscription, onNavigate }: { onPosted: () => void;
   const effectiveLimit = isCustomActive ? (subscription?.custom_job_limit ?? null) : (subscription?.job_post_limit ?? null);
   const jobsPosted = subscription?.jobs_posted ?? 0;
   const isAtLimit = effectiveLimit !== null && jobsPosted >= effectiveLimit;
-  const isFreeUser = !subscription || (!isCustomActive && parseFloat(subscription?.price_monthly ?? "0") === 0);
+  const isFreeUser = !subscription || (!isCustomActive && subscription?.plan_type === "standard" && parseFloat(subscription?.price_monthly ?? "0") === 0);
 
   async function handleUpgradeCheckout() {
     setCheckingOut(true);
@@ -1953,33 +2079,33 @@ function Applications() {
     <div className="space-y-4">
 
       {/* ── Pipeline summary ──────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-9">
         {[
-          { value: "pending",        label: "New",           bg: "bg-amber-50",   color: "text-amber-700",   icon: Clock        },
-          { value: "reviewed",       label: "Reviewed",      bg: "bg-blue-50",    color: "text-blue-700",    icon: Eye          },
-          { value: "shortlisted",    label: "Shortlisted",   bg: "bg-violet-50",  color: "text-violet-700",  icon: Star         },
-          { value: "interview",      label: "Interview",     bg: "bg-indigo-50",  color: "text-indigo-700",  icon: Calendar     },
-          { value: "offered",        label: "Offered",       bg: "bg-amber-50",   color: "text-amber-700",   icon: Award        },
-          { value: "accepted",       label: "Hired",         bg: "bg-emerald-50", color: "text-emerald-700", icon: CheckCircle2 },
-          { value: "offer_declined", label: "Offer Declined",bg: "bg-slate-50",   color: "text-slate-600",   icon: XCircle      },
-          { value: "rejected",       label: "Rejected",      bg: "bg-rose-50",    color: "text-rose-600",    icon: XCircle      },
-          { value: "withdrawn",      label: "Withdrawn",     bg: "bg-slate-100",  color: "text-slate-500",   icon: AlertCircle  },
-        ].map(s => {
-          const Icon = s.icon;
-          const count = countsByStatus[s.value] ?? 0;
+          { value: "pending",        label: "New",        bg: "bg-amber-50",   color: "text-amber-700",   icon: Clock        },
+          { value: "reviewed",       label: "Reviewed",   bg: "bg-blue-50",    color: "text-blue-700",    icon: Eye          },
+          { value: "shortlisted",    label: "Shortlist",  bg: "bg-violet-50",  color: "text-violet-700",  icon: Star         },
+          { value: "interview",      label: "Interview",  bg: "bg-indigo-50",  color: "text-indigo-700",  icon: Calendar     },
+          { value: "offered",        label: "Offered",    bg: "bg-amber-50",   color: "text-amber-700",   icon: Award        },
+          { value: "accepted",       label: "Hired",      bg: "bg-emerald-50", color: "text-emerald-700", icon: CheckCircle2 },
+          { value: "offer_declined", label: "Declined",   bg: "bg-slate-50",   color: "text-slate-600",   icon: XCircle      },
+          { value: "rejected",       label: "Rejected",   bg: "bg-rose-50",    color: "text-rose-600",    icon: XCircle      },
+          { value: "withdrawn",      label: "Withdrawn",  bg: "bg-slate-100",  color: "text-slate-500",   icon: AlertCircle  },
+        ].map(stat => {
+          const Icon = stat.icon;
+          const count = countsByStatus[stat.value] ?? 0;
           return (
             <button
-              key={s.value}
-              onClick={() => setFilterStatus(filterStatus === s.value ? "" : s.value)}
-              className={`flex flex-col items-center gap-1 rounded-2xl border p-3 transition hover:shadow-md ${
-                filterStatus === s.value ? "border-accent bg-accent/5 shadow-sm" : "border-border bg-card shadow-sm"
+              key={stat.value}
+              onClick={() => setFilterStatus(filterStatus === stat.value ? "" : stat.value)}
+              className={`flex flex-col items-center gap-1 rounded-xl border p-2 sm:p-2.5 transition active:scale-95 ${
+                filterStatus === stat.value ? "border-accent bg-accent/5 shadow-sm" : "border-border bg-card shadow-sm hover:shadow-md"
               }`}
             >
-              <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${s.bg}`}>
-                <Icon className={`h-4 w-4 ${s.color}`} />
+              <div className={`flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg ${stat.bg}`}>
+                <Icon className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${stat.color}`} />
               </div>
-              <p className={`text-lg font-extrabold ${count > 0 ? s.color : "text-muted-foreground/40"}`}>{count}</p>
-              <p className="text-[10px] font-semibold text-muted-foreground text-center leading-tight">{s.label}</p>
+              <p className={`text-base sm:text-lg font-extrabold leading-none ${count > 0 ? stat.color : "text-muted-foreground/40"}`}>{count}</p>
+              <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground text-center leading-tight">{stat.label}</p>
             </button>
           );
         })}
@@ -1988,12 +2114,12 @@ function Applications() {
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-border bg-card shadow-sm">
         {/* Status tab bar */}
-        <div className="flex items-center gap-0.5 overflow-x-auto border-b border-border px-4 pt-3 pb-0 scrollbar-none">
+        <div className="flex items-center gap-0.5 overflow-x-auto border-b border-border px-3 pt-3 pb-0 sm:px-4 scrollbar-none">
           {STATUS_TABS.filter(t => t.value === "" || (countsByStatus[t.value] ?? 0) > 0 || filterStatus === t.value).map(t => (
             <button
               key={t.value}
               onClick={() => setFilterStatus(t.value)}
-              className={`relative mb-[-1px] shrink-0 px-3.5 pb-3 pt-1 text-sm font-semibold transition-colors whitespace-nowrap ${
+              className={`relative mb-[-1px] shrink-0 px-3 pb-3 pt-1 text-sm font-semibold transition-colors whitespace-nowrap ${
                 filterStatus === t.value
                   ? "border-b-2 border-accent text-accent"
                   : "text-muted-foreground hover:text-foreground"
@@ -2011,31 +2137,33 @@ function Applications() {
         </div>
 
         {/* Search + filters */}
-        <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
+        <div className="flex flex-col gap-2.5 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:p-4">
+          <div className="relative flex-1 min-w-0 sm:min-w-[200px]">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by physician name or email…"
+              placeholder="Search physician name or email…"
               className="w-full rounded-xl border border-border bg-background py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
             />
           </div>
-          <select value={filterJob} onChange={e => setFilterJob(e.target.value)}
-            className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 sm:w-52">
-            <option value="">All job postings</option>
-            {(jobs ?? []).map(j => <option key={j.id} value={String(j.id)}>{j.title}</option>)}
-          </select>
-          <select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)}
-            className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 sm:w-44">
-            <option value="">All specialties</option>
-            {SPECIALTIES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-          {hasFilters && (
-            <button onClick={clearFilters} className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-rose-600 transition shrink-0">
-              <X className="h-3.5 w-3.5" /> Clear
-            </button>
-          )}
+          <div className="flex gap-2 flex-wrap">
+            <select value={filterJob} onChange={e => setFilterJob(e.target.value)}
+              className="flex-1 min-w-[140px] rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 sm:w-52 sm:flex-none">
+              <option value="">All job postings</option>
+              {(jobs ?? []).map(j => <option key={j.id} value={String(j.id)}>{j.title}</option>)}
+            </select>
+            <select value={filterSpecialty} onChange={e => setFilterSpecialty(e.target.value)}
+              className="flex-1 min-w-[130px] rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 sm:w-44 sm:flex-none">
+              <option value="">All specialties</option>
+              {SPECIALTIES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            {hasFilters && (
+              <button onClick={clearFilters} className="inline-flex items-center gap-1 rounded-xl border border-border px-3 py-2.5 text-xs font-semibold text-muted-foreground hover:text-rose-600 hover:border-rose-300 transition shrink-0">
+                <X className="h-3.5 w-3.5" /> Clear
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2045,7 +2173,7 @@ function Applications() {
       ) : isError ? (
         <ErrorState error={error} title="Couldn't load applications" onRetry={() => refetch()} />
       ) : !data?.length ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card p-14 text-center">
+        <div className="rounded-2xl border border-dashed border-border bg-card px-6 py-12 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-secondary">
             <Users className="h-6 w-6 text-muted-foreground/40" />
           </div>
@@ -2058,7 +2186,7 @@ function Applications() {
         </div>
       ) : (
         <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between border-b border-border bg-secondary/30 px-5 py-3">
+          <div className="flex items-center justify-between border-b border-border bg-secondary/30 px-4 py-3 sm:px-5">
             <p className="text-xs font-semibold text-muted-foreground">{data.length} applicant{data.length !== 1 ? "s" : ""}</p>
           </div>
           <div className="divide-y divide-border">
@@ -2070,31 +2198,38 @@ function Applications() {
                 <div
                   key={a.id}
                   onClick={() => setDrawerApp(a)}
-                  className="flex cursor-pointer items-center gap-4 px-5 py-4 transition hover:bg-secondary/30"
+                  className="flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-secondary/30 active:bg-secondary/50 sm:gap-4 sm:px-5 sm:py-4"
                 >
                   {/* Avatar */}
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                  <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs sm:text-sm font-bold text-primary">
                     {initials}
                   </div>
 
                   {/* Main info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-foreground">{a.physician_name ?? "Unnamed"}</span>
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <span className="font-semibold text-foreground text-sm truncate">{a.physician_name ?? "Unnamed"}</span>
                       {a.willing_to_relocate && (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Open to relocate</span>
+                        <span className="hidden sm:inline rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Open to relocate</span>
                       )}
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground truncate">
                       {a.physician_specialty_display || a.physician_specialty || "—"}
                       {a.years_experience ? ` · ${a.years_experience}yr exp` : ""}
                     </p>
+                    {/* Mobile: show status badge inline */}
+                    <div className="mt-1 sm:hidden">
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${meta.bg} ${meta.color}`}>
+                        <Icon className="h-2.5 w-2.5" />
+                        {a.status_display ?? a.status ?? "Pending"}
+                      </span>
+                    </div>
                     {a.job_title && (
-                      <p className="mt-0.5 text-[11px] font-medium text-accent truncate">→ {a.job_title}</p>
+                      <p className="mt-0.5 text-[11px] font-medium text-accent truncate hidden sm:block">→ {a.job_title}</p>
                     )}
                   </div>
 
-                  {/* Status + date */}
+                  {/* Status + date (desktop) */}
                   <div className="hidden sm:flex shrink-0 flex-col items-end gap-1.5">
                     <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${meta.bg} ${meta.color}`}>
                       <Icon className="h-3 w-3" />
@@ -2105,7 +2240,7 @@ function Applications() {
                     )}
                   </div>
 
-                  {/* Status quick-change (desktop) */}
+                  {/* Status quick-change (desktop only) */}
                   <div className="hidden lg:block shrink-0" onClick={e => e.stopPropagation()}>
                     <select
                       value={a.status ?? "pending"}
@@ -2135,8 +2270,8 @@ function Applications() {
           <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={() => setDrawerApp(null)} />
           <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col bg-card shadow-modal overflow-hidden">
             {/* Drawer header */}
-            <div className="flex items-center gap-4 border-b border-border px-6 py-4 shrink-0">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base font-bold text-primary">
+            <div className="flex items-center gap-3 border-b border-border px-4 py-3 sm:gap-4 sm:px-6 sm:py-4 shrink-0">
+              <div className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm sm:text-base font-bold text-primary">
                 {(drawerApp.physician_name ?? "?").split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
@@ -2146,15 +2281,15 @@ function Applications() {
                   {drawerApp.years_experience ? ` · ${drawerApp.years_experience}yr exp` : ""}
                 </p>
               </div>
-              <button onClick={() => setDrawerApp(null)} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary transition">
+              <button onClick={() => setDrawerApp(null)} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary transition shrink-0">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Drawer body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5">
               {/* Status control */}
-              <div className="flex items-center gap-3 rounded-xl border border-border bg-secondary/30 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-secondary/30 px-3 py-3 sm:px-4">
                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex-1">Application Status</p>
                 {PHYSICIAN_DECIDED.includes(drawerApp.status ?? "") ? (
                   <span className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-semibold text-muted-foreground">
@@ -2177,14 +2312,14 @@ function Applications() {
               {drawerApp.job_title && (
                 <div>
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Applied to</p>
-                  <div className="rounded-xl border border-border bg-secondary/30 px-4 py-3 flex items-center gap-3">
+                  <div className="rounded-xl border border-border bg-secondary/30 px-3 py-3 sm:px-4 flex items-center gap-3">
                     <Briefcase className="h-4 w-4 text-accent shrink-0" />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="font-semibold text-foreground truncate">{drawerApp.job_title}</p>
                       {drawerApp.job_location && <p className="text-xs text-muted-foreground">{drawerApp.job_location}</p>}
                     </div>
                     {drawerApp.applied_at && (
-                      <span className="ml-auto text-xs text-muted-foreground shrink-0">{format(new Date(drawerApp.applied_at), "MMM d, yyyy")}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">{format(new Date(drawerApp.applied_at), "MMM d, yyyy")}</span>
                     )}
                   </div>
                 </div>
@@ -2193,25 +2328,25 @@ function Applications() {
               {/* Candidate details grid */}
               <div>
                 <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Candidate Details</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
                   {[
-                    { icon: FileText,    label: "CPSO / Licence",   value: drawerApp.physician_cpso },
-                    { icon: Phone,       label: "Phone",             value: drawerApp.phone },
-                    { icon: Globe,       label: "Email",             value: drawerApp.physician_email, href: `mailto:${drawerApp.physician_email}` },
-                    { icon: Linkedin,    label: "LinkedIn",          value: drawerApp.linkedin_url ? "View Profile" : undefined, href: drawerApp.linkedin_url },
-                    { icon: Calendar,    label: "Available from",    value: drawerApp.availability_date ? format(new Date(drawerApp.availability_date), "MMM d, yyyy") : undefined },
-                    { icon: Briefcase,   label: "Experience",        value: drawerApp.years_experience != null ? `${drawerApp.years_experience} year${drawerApp.years_experience !== 1 ? "s" : ""}` : undefined },
-                    { icon: CheckCircle2,label: "Certifications",    value: drawerApp.physician_certifications },
+                    { icon: FileText,    label: "CPSO / Licence",     value: drawerApp.physician_cpso },
+                    { icon: Phone,       label: "Phone",               value: drawerApp.phone },
+                    { icon: Globe,       label: "Email",               value: drawerApp.physician_email, href: `mailto:${drawerApp.physician_email}` },
+                    { icon: Linkedin,    label: "LinkedIn",            value: drawerApp.linkedin_url ? "View Profile" : undefined, href: drawerApp.linkedin_url },
+                    { icon: Calendar,    label: "Available from",      value: drawerApp.availability_date ? format(new Date(drawerApp.availability_date), "MMM d, yyyy") : undefined },
+                    { icon: Briefcase,   label: "Experience",          value: drawerApp.years_experience != null ? `${drawerApp.years_experience} year${drawerApp.years_experience !== 1 ? "s" : ""}` : undefined },
+                    { icon: CheckCircle2,label: "Certifications",      value: drawerApp.physician_certifications },
                     { icon: MapPin,      label: "Willing to relocate", value: drawerApp.willing_to_relocate != null ? (drawerApp.willing_to_relocate ? "Yes" : "No") : undefined },
                   ].filter(f => f.value).map(f => (
                     <div key={f.label} className="rounded-xl border border-border bg-secondary/30 px-3 py-2.5">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{f.label}</p>
                       {f.href ? (
-                        <a href={f.href} target="_blank" rel="noreferrer" className="mt-0.5 flex items-center gap-1 text-sm font-semibold text-accent hover:underline">
+                        <a href={f.href} target="_blank" rel="noreferrer" className="mt-0.5 flex items-center gap-1 text-sm font-semibold text-accent hover:underline truncate">
                           {f.value} <ExternalLink className="h-3 w-3 shrink-0" />
                         </a>
                       ) : (
-                        <p className="mt-0.5 text-sm font-semibold text-foreground">{f.value}</p>
+                        <p className="mt-0.5 text-sm font-semibold text-foreground truncate">{f.value}</p>
                       )}
                     </div>
                   ))}
@@ -2222,7 +2357,7 @@ function Applications() {
               {drawerApp.cover_letter && (
                 <div>
                   <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Cover Letter</p>
-                  <div className="rounded-xl border border-border bg-secondary/30 px-4 py-3 max-h-52 overflow-y-auto">
+                  <div className="rounded-xl border border-border bg-secondary/30 px-3 py-3 sm:px-4 max-h-52 overflow-y-auto">
                     <p className="text-sm text-foreground/85 whitespace-pre-wrap leading-relaxed">{drawerApp.cover_letter}</p>
                   </div>
                 </div>
@@ -2241,7 +2376,7 @@ function Applications() {
             </div>
 
             {/* Drawer footer actions */}
-            <div className="flex gap-3 border-t border-border px-6 py-4 shrink-0">
+            <div className="flex gap-3 border-t border-border px-4 py-3 sm:px-6 sm:py-4 shrink-0">
               {(drawerApp.resume_url || drawerApp.profile_resume_url) && (
                 <a
                   href={drawerApp.resume_url || drawerApp.profile_resume_url!}
@@ -3754,7 +3889,7 @@ function BillingHistory({ subscription }: { subscription: UserSubscription | nul
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Billing Statement — MedConnect Canada</title>
+          <title>Billing Statement — CandianMdJobs</title>
           <meta charset="utf-8" />
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -3789,7 +3924,7 @@ function BillingHistory({ subscription }: { subscription: UserSubscription | nul
         </head>
         <body>
           <div class="header">
-            <h1>MedConnect Canada</h1>
+            <h1>CandianMdJobs</h1>
             <p>Official Billing Statement</p>
             <div class="meta">
               <div><span>Account: </span><strong>${user?.email ?? ""}</strong></div>
@@ -3851,7 +3986,7 @@ function BillingHistory({ subscription }: { subscription: UserSubscription | nul
           </table>
 
           <div class="footer">
-            <p>MedConnect Canada &nbsp;·&nbsp; This document serves as an official billing record.</p>
+            <p>CandianMdJobs &nbsp;·&nbsp; This document serves as an official billing record.</p>
             <p>Generated on ${format(new Date(), "MMMM d, yyyy 'at' h:mm a")}</p>
           </div>
         </body>

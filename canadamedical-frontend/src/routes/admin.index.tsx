@@ -27,6 +27,12 @@ import {
   ArrowRight,
   Eye,
   RefreshCw,
+  DollarSign,
+  CreditCard,
+  ArrowUpRight,
+  ArrowDownRight,
+  Building2,
+  Stethoscope,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { format } from "date-fns";
@@ -48,7 +54,12 @@ interface DashboardStats {
   unread_contacts: number;
   total_revenue: string;
   monthly_revenue: string;
+  last_month_revenue: string;
+  mrr: string;
   active_subscriptions: number;
+  active_free: number;
+  active_professional: number;
+  active_enterprise: number;
 }
 
 interface RecentJob {
@@ -83,7 +94,7 @@ interface DashboardData {
   recent_jobs: RecentJob[];
   recent_users: RecentUser[];
   user_growth_chart: UserGrowthPoint[];
-  monthly_revenue_chart: { month: string; revenue: number }[];
+  monthly_revenue_chart: { month: string; revenue: number; transactions: number }[];
 }
 
 function StatCard({
@@ -104,19 +115,19 @@ function StatCard({
   toneIcon: string;
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${toneIcon}`}>
-        <Icon className="h-5 w-5 text-white" />
+    <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-sm">
+      <div className={`flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl ${toneIcon}`}>
+        <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
       </div>
-      <p className="mt-3 text-2xl font-bold text-primary">
+      <p className="mt-3 text-xl sm:text-2xl font-bold text-primary">
         {loading ? (
-          <span className="inline-block h-7 w-14 animate-pulse rounded bg-secondary" />
+          <span className="inline-block h-6 sm:h-7 w-12 sm:w-14 animate-pulse rounded bg-secondary" />
         ) : (
           value
         )}
       </p>
       <p className={`text-xs font-semibold ${tone}`}>{label}</p>
-      {sub && <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>}
+      {sub && <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">{sub}</p>}
     </div>
   );
 }
@@ -136,24 +147,26 @@ function SectionCard({
 }) {
   return (
     <div className={`rounded-2xl border border-border bg-card shadow-sm ${className}`}>
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div>
-          <h3 className="text-sm font-bold text-foreground">{title}</h3>
-          {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+      <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5 sm:py-4 gap-2">
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-foreground truncate">{title}</h3>
+          {subtitle && <p className="text-xs text-muted-foreground truncate">{subtitle}</p>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
             <Activity className="h-3.5 w-3.5" />
           </span>
           {action && (
-            <Link to={action.to as never}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline">
+            <Link
+              to={action.to as never}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline whitespace-nowrap"
+            >
               {action.label} <ArrowRight className="h-3 w-3" />
             </Link>
           )}
         </div>
       </div>
-      <div className="p-5">{children}</div>
+      <div className="p-4 sm:p-5">{children}</div>
     </div>
   );
 }
@@ -179,6 +192,10 @@ function AdminDashboard() {
 
   const s = data?.stats;
   const totalUsers = (s?.total_physicians ?? 0) + (s?.total_employers ?? 0);
+
+  const thisMonth = parseFloat(s?.monthly_revenue ?? "0");
+  const lastMonth = parseFloat(s?.last_month_revenue ?? "0");
+  const revenueChange = lastMonth > 0 ? (((thisMonth - lastMonth) / lastMonth) * 100).toFixed(1) : null;
 
   const primaryStats = [
     {
@@ -215,28 +232,22 @@ function AdminDashboard() {
     },
   ];
 
-  const secondaryStats = [
-    { label: "Pending Jobs", value: s?.pending_jobs ?? 0, icon: Clock, bg: "bg-amber-50", color: "text-amber-700" },
-    { label: "Physicians", value: s?.total_physicians ?? 0, icon: Users, bg: "bg-blue-50", color: "text-blue-700" },
-    { label: "Employers", value: s?.total_employers ?? 0, icon: Briefcase, bg: "bg-violet-50", color: "text-violet-700" },
-    { label: "Unreviewed Assessments", value: s?.unreviewed_assessments ?? 0, icon: ClipboardList, bg: "bg-rose-50", color: "text-rose-700" },
-  ];
-
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-4 lg:p-8">
+    <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6 p-3 sm:p-4 lg:p-8">
+
       {/* Welcome banner */}
-      <header className="rounded-2xl border border-border bg-linear-to-br from-primary to-primary-glow p-6 text-primary-foreground shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div>
+      <header className="rounded-2xl border border-border bg-linear-to-br from-primary to-primary-glow p-4 sm:p-6 text-primary-foreground shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-widest opacity-75">Admin Dashboard</p>
-            <h1 className="mt-1 text-2xl font-bold">
+            <h1 className="mt-1 text-xl sm:text-2xl font-bold truncate">
               {user?.first_name || user?.email || "Administrator"}
             </h1>
-            <p className="mt-1 text-sm opacity-80">
+            <p className="mt-1 text-sm opacity-80 leading-snug">
               Real-time overview of jobs, users, applications, and inquiries.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               onClick={() => recalculate.mutate()}
               disabled={recalculate.isPending || isFetching}
@@ -254,8 +265,8 @@ function AdminDashboard() {
               <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
               Refresh
             </button>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white/80">
-              <TrendingUp className="h-3 w-3" /> Live metrics
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white/80">
+              <TrendingUp className="h-3 w-3" /> Live
             </span>
           </div>
         </div>
@@ -268,35 +279,219 @@ function AdminDashboard() {
       )}
 
       {/* Primary stat cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {primaryStats.map((s) => (
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+        {primaryStats.map((stat) => (
           <StatCard
-            key={s.label}
-            icon={s.icon}
-            label={s.label}
-            value={s.value}
-            sub={s.sub}
+            key={stat.label}
+            icon={stat.icon}
+            label={stat.label}
+            value={stat.value}
+            sub={stat.sub}
             loading={isLoading}
-            tone={s.tone}
-            toneIcon={s.toneIcon}
+            tone={stat.tone}
+            toneIcon={stat.toneIcon}
           />
         ))}
       </div>
 
-      {/* Secondary quick stats */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {secondaryStats.map((s) => {
-          const Icon = s.icon;
-          return (
-            <div key={s.label} className={`flex items-center gap-3 rounded-xl border border-border p-3 ${s.bg}`}>
-              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${s.bg} ${s.color}`}>
-                <Icon className="h-4 w-4" />
+      {/* Revenue + Subscription analytics */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
+
+        {/* Revenue KPI cards */}
+        <div className="grid grid-cols-1 gap-3 lg:col-span-1">
+
+          {/* Total Revenue */}
+          <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl bg-emerald-100">
+                <DollarSign className="h-4 w-4 text-emerald-600" />
               </div>
-              <div>
-                <p className={`text-lg font-bold ${s.color}`}>
-                  {isLoading ? <span className="inline-block h-5 w-8 animate-pulse rounded bg-white/40" /> : s.value}
+              <Link
+                to="/admin/revenue"
+                className="text-xs font-semibold text-accent hover:underline flex items-center gap-0.5"
+              >
+                Details <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+            <p className="text-xl sm:text-2xl font-extrabold text-emerald-700 leading-tight">
+              {isLoading ? (
+                <span className="inline-block h-7 w-28 animate-pulse rounded bg-secondary" />
+              ) : (
+                `$${parseFloat(s?.total_revenue ?? "0").toLocaleString("en-CA", { minimumFractionDigits: 2 })} CAD`
+              )}
+            </p>
+            <p className="text-xs font-semibold text-muted-foreground mt-0.5">Total Revenue (all time)</p>
+          </div>
+
+          {/* This month + MRR */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-border bg-card p-3 sm:p-4 shadow-sm">
+              <div className="flex items-center gap-1 mb-2">
+                <TrendingUp className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                <span className="text-[10px] sm:text-[11px] font-bold text-muted-foreground uppercase tracking-wide truncate">This Month</span>
+              </div>
+              <p className="text-base sm:text-lg font-extrabold text-blue-700">
+                {isLoading ? (
+                  <span className="inline-block h-5 w-14 animate-pulse rounded bg-secondary" />
+                ) : (
+                  `$${parseFloat(s?.monthly_revenue ?? "0").toLocaleString("en-CA", { minimumFractionDigits: 0 })}`
+                )}
+              </p>
+              {revenueChange !== null && (
+                <p className={`text-[10px] font-semibold mt-0.5 flex items-center gap-0.5 ${parseFloat(revenueChange) >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                  {parseFloat(revenueChange) >= 0 ? (
+                    <ArrowUpRight className="h-3 w-3 shrink-0" />
+                  ) : (
+                    <ArrowDownRight className="h-3 w-3 shrink-0" />
+                  )}
+                  <span className="truncate">{revenueChange}% vs last</span>
                 </p>
-                <p className={`text-[11px] font-medium ${s.color} opacity-80`}>{s.label}</p>
+              )}
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-3 sm:p-4 shadow-sm">
+              <div className="flex items-center gap-1 mb-2">
+                <CreditCard className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+                <span className="text-[10px] sm:text-[11px] font-bold text-muted-foreground uppercase tracking-wide">MRR</span>
+              </div>
+              <p className="text-base sm:text-lg font-extrabold text-violet-700">
+                {isLoading ? (
+                  <span className="inline-block h-5 w-14 animate-pulse rounded bg-secondary" />
+                ) : (
+                  `$${parseFloat(s?.mrr ?? "0").toLocaleString("en-CA", { minimumFractionDigits: 0 })}`
+                )}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Monthly Recurring</p>
+            </div>
+          </div>
+
+          {/* Subscription breakdown */}
+          <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-sm">
+            <p className="text-xs font-bold text-foreground mb-3">Subscription Breakdown</p>
+            <div className="space-y-2.5">
+              {[
+                { label: "Free", count: s?.active_free ?? 0, color: "bg-slate-400", text: "text-slate-600" },
+                { label: "Professional", count: s?.active_professional ?? 0, color: "bg-blue-500", text: "text-blue-700" },
+                { label: "Enterprise", count: s?.active_enterprise ?? 0, color: "bg-emerald-500", text: "text-emerald-700" },
+              ].map((r) => {
+                const total = (s?.active_free ?? 0) + (s?.active_professional ?? 0) + (s?.active_enterprise ?? 0);
+                const pct = total > 0 ? Math.round((r.count / total) * 100) : 0;
+                return (
+                  <div key={r.label}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-foreground">{r.label}</span>
+                      <span className={`text-xs font-bold ${r.text}`}>
+                        {isLoading ? "—" : `${r.count} (${pct}%)`}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                      <div className={`h-full rounded-full ${r.color} transition-all duration-500`} style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Total active</span>
+              <span className="text-sm font-bold text-foreground">{isLoading ? "—" : (s?.active_subscriptions ?? 0)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Revenue chart */}
+        <div className="lg:col-span-2 rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4 gap-2">
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-foreground">Monthly Revenue</h3>
+              <p className="text-xs text-muted-foreground">Last 12 months · CAD</p>
+            </div>
+            <Link
+              to="/admin/revenue"
+              className="text-xs font-semibold text-accent hover:underline flex items-center gap-0.5 shrink-0"
+            >
+              Full report <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="h-48 sm:h-56 lg:h-64">
+            {isLoading ? (
+              <div className="flex h-full items-center justify-center">
+                <span className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-accent" />
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={data?.monthly_revenue_chart ?? []}
+                  margin={{ top: 8, right: 4, left: -10, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="oklch(0.72 0.17 160)" stopOpacity={0.4} />
+                      <stop offset="100%" stopColor="oklch(0.72 0.17 160)" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.012 250)" vertical={false} />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fontSize: 10, fill: "oklch(0.55 0.025 255)" }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: "oklch(0.55 0.025 255)" }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                    width={45}
+                  />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 12, border: "1px solid oklch(0.92 0.012 250)", fontSize: 12 }}
+                    formatter={(v: number) => [
+                      `$${v.toLocaleString("en-CA", { minimumFractionDigits: 2 })} CAD`,
+                      "Revenue",
+                    ]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    name="Revenue"
+                    stroke="oklch(0.72 0.17 160)"
+                    strokeWidth={2.5}
+                    fill="url(#revGrad)"
+                    dot={false}
+                    activeDot={{ r: 5 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Secondary quick stats */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: "Pending Jobs", value: s?.pending_jobs ?? 0, icon: Clock, bg: "bg-amber-50", color: "text-amber-700", iconBg: "bg-amber-100" },
+          { label: "Physicians", value: s?.total_physicians ?? 0, icon: Stethoscope, bg: "bg-blue-50", color: "text-blue-700", iconBg: "bg-blue-100" },
+          { label: "Employers", value: s?.total_employers ?? 0, icon: Building2, bg: "bg-violet-50", color: "text-violet-700", iconBg: "bg-violet-100" },
+          { label: "Unreviewed", value: s?.unreviewed_assessments ?? 0, icon: ClipboardList, bg: "bg-rose-50", color: "text-rose-700", iconBg: "bg-rose-100" },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className={`flex items-center gap-3 rounded-xl border border-border p-3 sm:p-3.5 ${item.bg}`}>
+              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${item.iconBg}`}>
+                <Icon className={`h-4 w-4 ${item.color}`} />
+              </div>
+              <div className="min-w-0">
+                <p className={`text-base sm:text-lg font-bold ${item.color} leading-tight`}>
+                  {isLoading ? (
+                    <span className="inline-block h-5 w-8 animate-pulse rounded bg-white/40" />
+                  ) : (
+                    item.value
+                  )}
+                </p>
+                <p className={`text-[10px] sm:text-[11px] font-medium ${item.color} opacity-80 leading-tight`}>
+                  {item.label}
+                </p>
               </div>
             </div>
           );
@@ -304,14 +499,15 @@ function AdminDashboard() {
       </div>
 
       {/* Charts row */}
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-5 grid-cols-1 lg:grid-cols-2">
+
         {/* User growth chart */}
         <SectionCard
           title="User Growth"
-          subtitle="Physicians & employers registered per month"
+          subtitle="Physicians & employers per month"
           action={{ label: "Manage users", to: "/admin/users" }}
         >
-          <div className="h-64">
+          <div className="h-48 sm:h-56 lg:h-64">
             {isLoading ? (
               <div className="flex h-full items-center justify-center">
                 <span className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-accent" />
@@ -320,7 +516,10 @@ function AdminDashboard() {
               <p className="flex h-full items-center justify-center text-sm text-muted-foreground">No data yet</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data.user_growth_chart} margin={{ top: 8, right: 8, left: -16, bottom: 8 }}>
+                <AreaChart
+                  data={data.user_growth_chart}
+                  margin={{ top: 8, right: 4, left: -20, bottom: 0 }}
+                >
                   <defs>
                     <linearGradient id="physGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="oklch(0.62 0.20 255)" stopOpacity={0.4} />
@@ -332,8 +531,20 @@ function AdminDashboard() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.012 250)" vertical={false} />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "oklch(0.55 0.025 255)" }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "oklch(0.55 0.025 255)" }} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fontSize: 10, fill: "oklch(0.55 0.025 255)" }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: "oklch(0.55 0.025 255)" }}
+                    tickLine={false}
+                    axisLine={false}
+                    allowDecimals={false}
+                    width={30}
+                  />
                   <Tooltip
                     contentStyle={{ borderRadius: 12, border: "1px solid oklch(0.92 0.012 250)", fontSize: 12 }}
                   />
@@ -349,10 +560,10 @@ function AdminDashboard() {
         {/* Jobs status breakdown bar chart */}
         <SectionCard
           title="Job Posting Status"
-          subtitle="Active, pending, and total jobs breakdown"
+          subtitle="Active, pending, and total jobs"
           action={{ label: "Manage jobs", to: "/admin/jobs" }}
         >
-          <div className="h-64">
+          <div className="h-48 sm:h-56 lg:h-64">
             {isLoading ? (
               <div className="flex h-full items-center justify-center">
                 <span className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-accent" />
@@ -365,7 +576,7 @@ function AdminDashboard() {
                     { name: "Pending", count: s?.pending_jobs ?? 0 },
                     { name: "Total", count: s?.total_jobs ?? 0 },
                   ]}
-                  margin={{ top: 8, right: 8, left: -16, bottom: 8 }}
+                  margin={{ top: 8, right: 4, left: -20, bottom: 0 }}
                 >
                   <defs>
                     <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
@@ -374,8 +585,19 @@ function AdminDashboard() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.92 0.012 250)" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: "oklch(0.55 0.025 255)" }} tickLine={false} axisLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "oklch(0.55 0.025 255)" }} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 11, fill: "oklch(0.55 0.025 255)" }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: "oklch(0.55 0.025 255)" }}
+                    tickLine={false}
+                    axisLine={false}
+                    allowDecimals={false}
+                    width={30}
+                  />
                   <Tooltip
                     contentStyle={{ borderRadius: 12, border: "1px solid oklch(0.92 0.012 250)", fontSize: 12 }}
                   />
@@ -388,7 +610,8 @@ function AdminDashboard() {
       </div>
 
       {/* Recent activity row */}
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-5 grid-cols-1 lg:grid-cols-2">
+
         {/* Recent jobs */}
         <SectionCard
           title="Recent Job Postings"
@@ -397,7 +620,9 @@ function AdminDashboard() {
         >
           {isLoading ? (
             <div className="space-y-3">
-              {[...Array(4)].map((_, i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-secondary" />)}
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-10 animate-pulse rounded-lg bg-secondary" />
+              ))}
             </div>
           ) : !data?.recent_jobs?.length ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No jobs yet</p>
@@ -414,18 +639,20 @@ function AdminDashboard() {
                       {job.employer_name ?? "—"} · {job.specialty ?? "—"}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                     {job.is_approved ? (
                       <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                        <CheckCircle2 className="h-2.5 w-2.5" /> Active
+                        <CheckCircle2 className="h-2.5 w-2.5" />
+                        <span className="hidden xs:inline">Active</span>
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                        <Clock className="h-2.5 w-2.5" /> Pending
+                        <Clock className="h-2.5 w-2.5" />
+                        <span className="hidden xs:inline">Pending</span>
                       </span>
                     )}
                     {job.created_at && (
-                      <span className="hidden text-[10px] text-muted-foreground sm:block">
+                      <span className="hidden sm:block text-[10px] text-muted-foreground">
                         {format(new Date(job.created_at), "MMM d")}
                       </span>
                     )}
@@ -444,7 +671,9 @@ function AdminDashboard() {
         >
           {isLoading ? (
             <div className="space-y-3">
-              {[...Array(4)].map((_, i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-secondary" />)}
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-10 animate-pulse rounded-lg bg-secondary" />
+              ))}
             </div>
           ) : !data?.recent_users?.length ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No users yet</p>
@@ -461,9 +690,11 @@ function AdminDashboard() {
                     </p>
                     <p className="truncate text-xs text-muted-foreground">{u.email}</p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${
-                      u.user_type === "physician" ? "bg-blue-100 text-blue-800" : "bg-violet-100 text-violet-800"
+                      u.user_type === "physician"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-violet-100 text-violet-800"
                     }`}>
                       {u.user_type ?? "—"}
                     </span>
@@ -473,7 +704,7 @@ function AdminDashboard() {
                       <XCircle className="h-3.5 w-3.5 text-rose-400" />
                     )}
                     {u.date_joined && (
-                      <span className="hidden text-[10px] text-muted-foreground sm:block">
+                      <span className="hidden sm:block text-[10px] text-muted-foreground">
                         {format(new Date(u.date_joined), "MMM d")}
                       </span>
                     )}
@@ -486,21 +717,52 @@ function AdminDashboard() {
       </div>
 
       {/* Quick action links */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { to: "/admin/jobs", label: "Review Pending Jobs", sub: `${s?.pending_jobs ?? 0} awaiting`, icon: Briefcase, color: "text-blue-700", bg: "bg-blue-50 border-blue-200" },
-          { to: "/admin/users", label: "Manage Users", sub: `${totalUsers} registered`, icon: Users, color: "text-violet-700", bg: "bg-violet-50 border-violet-200" },
-          { to: "/admin/assessments", label: "Career Assessments", sub: `${s?.unreviewed_assessments ?? 0} unreviewed`, icon: ClipboardList, color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
-          { to: "/admin/contacts", label: "Contact Inquiries", sub: `${s?.unread_contacts ?? 0} unread`, icon: Mail, color: "text-amber-700", bg: "bg-amber-50 border-amber-200" },
+          {
+            to: "/admin/jobs",
+            label: "Review Pending Jobs",
+            sub: `${s?.pending_jobs ?? 0} awaiting`,
+            icon: Briefcase,
+            color: "text-blue-700",
+            bg: "bg-blue-50 border-blue-200",
+          },
+          {
+            to: "/admin/users",
+            label: "Manage Users",
+            sub: `${totalUsers} registered`,
+            icon: Users,
+            color: "text-violet-700",
+            bg: "bg-violet-50 border-violet-200",
+          },
+          {
+            to: "/admin/assessments",
+            label: "Career Assessments",
+            sub: `${s?.unreviewed_assessments ?? 0} unreviewed`,
+            icon: ClipboardList,
+            color: "text-emerald-700",
+            bg: "bg-emerald-50 border-emerald-200",
+          },
+          {
+            to: "/admin/contacts",
+            label: "Contact Inquiries",
+            sub: `${s?.unread_contacts ?? 0} unread`,
+            icon: Mail,
+            color: "text-amber-700",
+            bg: "bg-amber-50 border-amber-200",
+          },
         ].map((item) => {
           const Icon = item.icon;
           return (
-            <Link key={item.to} to={item.to as never}
-              className={`flex items-center gap-3 rounded-2xl border p-4 transition hover:shadow-sm ${item.bg}`}>
-              <Icon className={`h-6 w-6 shrink-0 ${item.color}`} />
-              <div className="min-w-0">
-                <p className={`text-sm font-bold ${item.color}`}>{item.label}</p>
-                <p className="text-xs text-muted-foreground">{isLoading ? "…" : item.sub}</p>
+            <Link
+              key={item.to}
+              to={item.to as never}
+              className={`flex items-center gap-3 rounded-2xl border p-4 transition hover:shadow-sm active:scale-[0.98] ${item.bg}`}
+            >
+              <Icon className={`h-5 w-5 sm:h-6 sm:w-6 shrink-0 ${item.color}`} />
+              <div className="min-w-0 flex-1">
+                <p className={`text-sm font-bold ${item.color} leading-tight`}>{item.label}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{isLoading ? "…" : item.sub}</p>
               </div>
               <ArrowRight className={`ml-auto h-4 w-4 shrink-0 ${item.color} opacity-50`} />
             </Link>

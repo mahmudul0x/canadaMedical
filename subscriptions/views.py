@@ -451,6 +451,18 @@ class MySubscriptionView(APIView):
             data['plan_type'] = 'enterprise' if sub.plan.is_enterprise else 'standard'
             data['custom_payment_status'] = None
             data['custom_payment_link'] = None
+            # For enterprise plans, surface the job limit from the approved request
+            # (plan.job_post_limit is NULL for enterprise — the limit lives on the request)
+            if sub.plan.is_enterprise:
+                try:
+                    er = EnterpriseRequest.objects.filter(
+                        user=request.user, status='approved'
+                    ).order_by('-approved_at').first()
+                    if er and er.custom_job_limit:
+                        data['job_post_limit'] = er.custom_job_limit
+                        data['jobs_remaining'] = max(0, er.custom_job_limit - (data.get('jobs_posted') or 0))
+                except Exception:
+                    pass
 
         # Expose whether a Stripe subscription exists so the frontend can
         # decide to show "Cancel plan" regardless of local status value.
@@ -1042,7 +1054,7 @@ class AdminEnterpriseRequestApproveView(APIView):
                     currency='cad',
                     recurring={'interval': 'month'},
                     product_data={
-                        'name': f"MedConnect Enterprise — {enterprise_request.organization_name}",
+                        'name': f"CandianMdJobs Enterprise — {enterprise_request.organization_name}",
                     },
                     metadata={
                         'enterprise_request_id': str(enterprise_request.id),
@@ -1281,7 +1293,8 @@ class AdminEnterpriseRequestRevokeView(APIView):
         enterprise_request.status = 'revoked'
         enterprise_request.revoked_by = request.user
         enterprise_request.revoked_at = timezone.now()
-        enterprise_request.save(update_fields=['status', 'revoked_by', 'revoked_at', 'updated_at'])
+        enterprise_request.revoked_reason = (request.data.get('revoked_reason') or '').strip()
+        enterprise_request.save(update_fields=['status', 'revoked_by', 'revoked_at', 'revoked_reason', 'updated_at'])
 
         if custom_plan:
             custom_plan.is_active = False

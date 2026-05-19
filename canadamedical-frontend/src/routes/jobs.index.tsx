@@ -26,7 +26,7 @@ import { SPECIALTIES as FALLBACK_SPECIALTIES, PROVINCES as FALLBACK_PROVINCES, J
 export const Route = createFileRoute("/jobs/")({
   head: () => ({
     meta: [
-      { title: "Find a Physician Job in Canada — MedConnect Canada" },
+      { title: "Find a Physician Job in Canada — CandianMdJobs" },
       {
         name: "description",
         content: "Search 1,200+ physician jobs across Canada by specialty, province, and employer type.",
@@ -474,7 +474,7 @@ function JobsPage() {
       {/* ── PAGE HEADER ── */}
       <div className="flex-none border-b border-border bg-linear-to-r from-primary to-primary-glow px-6 py-5 lg:px-14">
         <div className="text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">MedConnect Canada</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">CandianMdJobs</p>
           <h1 className="mt-0.5 text-2xl font-extrabold text-white">Physician Job Board</h1>
           <p className="mt-1 text-sm text-white/60">Browse verified opportunities across every province and specialty.</p>
         </div>

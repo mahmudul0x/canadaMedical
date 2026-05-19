@@ -14,7 +14,7 @@ import { api } from "@/lib/api";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "MedConnect Canada — Premier Physician Recruitment Platform" },
+      { title: "CandianMdJobs — Premier Physician Recruitment Platform" },
       {
         name: "description",
         content:
@@ -148,14 +148,14 @@ function Hero() {
       <div className="pointer-events-none absolute left-1/2 top-1/3 h-[320px] w-[320px] -translate-x-1/2 rounded-full bg-accent/10 blur-[80px]" />
 
       {/* ── Main grid ── */}
-      <div className="relative mx-auto w-full max-w-7xl flex-1 px-4 pb-16 pt-24 lg:px-8 lg:pb-20 lg:pt-32">
-        <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr] lg:gap-10">
+      <div className="relative mx-auto w-full max-w-7xl flex-1 px-4 pb-12 pt-16 sm:pb-16 sm:pt-24 lg:px-8 lg:pb-20 lg:pt-32">
+        <div className="grid items-center gap-10 lg:grid-cols-[1.1fr_1fr] lg:gap-10">
 
           {/* LEFT COLUMN */}
           <div>
             {/* Live badge */}
-            <div className="animate-fade-up inline-flex items-center gap-2.5 rounded-full border border-accent/25 bg-accent/10 py-1.5 pl-2 pr-4 text-[11px] font-bold uppercase tracking-[0.15em] text-accent backdrop-blur">
-              <span className="flex items-center gap-1.5 rounded-full bg-accent/20 px-2.5 py-0.5">
+            <div className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/10 py-1.5 pl-2 pr-3 text-[10px] font-bold uppercase tracking-[0.15em] text-accent backdrop-blur sm:pr-4 sm:text-[11px]">
+              <span className="flex items-center gap-1.5 rounded-full bg-accent/20 px-2 py-0.5 sm:px-2.5">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                 Live
               </span>
@@ -164,7 +164,7 @@ function Hero() {
 
             {/* Headline */}
             <h1
-              className="animate-fade-up mt-6 text-5xl font-extrabold leading-[1.04] tracking-tight sm:text-6xl lg:text-[66px]"
+              className="animate-fade-up mt-5 text-4xl font-extrabold leading-[1.06] tracking-tight sm:mt-6 sm:text-5xl lg:text-[62px]"
               style={{ animationDelay: "60ms" }}
             >
               <span className="block text-primary-foreground/90">The smarter way</span>
@@ -180,24 +180,24 @@ function Hero() {
 
             {/* Sub */}
             <p
-              className="animate-fade-up mt-6 max-w-lg text-[17px] leading-relaxed text-primary-foreground/65"
+              className="animate-fade-up mt-5 max-w-lg text-base leading-relaxed text-primary-foreground/65 sm:mt-6 sm:text-[17px]"
               style={{ animationDelay: "130ms" }}
             >
               Permanent, locum, and academic roles at Canada's top hospitals, health authorities, and clinics — matched to your specialty, province, and lifestyle.
             </p>
 
             {/* Integrated search bar */}
-            <div className="animate-fade-up mt-8" style={{ animationDelay: "180ms" }}>
+            <div className="animate-fade-up mt-6 sm:mt-8" style={{ animationDelay: "180ms" }}>
               <form
                 onSubmit={(e) => e.preventDefault()}
                 className="flex gap-1.5 rounded-2xl border border-white/10 bg-white/[0.07] p-1.5 backdrop-blur-md"
               >
-                <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-foreground/35" />
+                <div className="relative flex-1 min-w-0">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary-foreground/35 sm:left-3.5" />
                   <input
                     type="search"
-                    placeholder="Specialty, role, or employer…"
-                    className="w-full rounded-xl bg-transparent py-3 pl-10 pr-3 text-sm text-primary-foreground placeholder:text-primary-foreground/35 focus:outline-none"
+                    placeholder="Specialty or role…"
+                    className="w-full rounded-xl bg-transparent py-3 pl-9 pr-2 text-sm text-primary-foreground placeholder:text-primary-foreground/35 focus:outline-none sm:pl-10 sm:pr-3"
                   />
                 </div>
                 <select className="hidden rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-primary-foreground/70 focus:outline-none sm:block">
@@ -208,7 +208,7 @@ function Hero() {
                 </select>
                 <Link
                   to="/jobs"
-                  className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-3 text-sm font-bold text-primary shadow-glow transition hover:scale-[1.02] active:scale-[0.98]"
+                  className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-bold text-primary shadow-glow transition hover:scale-[1.02] active:scale-[0.98] sm:px-5"
                 >
                   <Search className="h-4 w-4" />
                   <span className="hidden sm:inline">Search</span>
@@ -227,19 +227,19 @@ function Hero() {
 
             {/* CTAs */}
             <div
-              className="animate-fade-up mt-7 flex flex-wrap items-center gap-3"
+              className="animate-fade-up mt-6 flex flex-wrap items-center gap-3 sm:mt-7"
               style={{ animationDelay: "230ms" }}
             >
               <Link
                 to="/register"
-                className="group inline-flex items-center gap-2 rounded-xl bg-primary-foreground px-6 py-3.5 text-[15px] font-bold text-primary transition hover:scale-[1.02] active:scale-[0.98]"
+                className="group inline-flex items-center gap-2 rounded-xl bg-primary-foreground px-5 py-3 text-sm font-bold text-primary transition hover:scale-[1.02] active:scale-[0.98] sm:px-6 sm:py-3.5 sm:text-[15px]"
               >
                 Get started free
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Link>
               <Link
                 to="/employers"
-                className="inline-flex items-center gap-2 rounded-xl border border-primary-foreground/20 px-6 py-3.5 text-[15px] font-semibold text-primary-foreground/80 backdrop-blur transition hover:border-primary-foreground/35 hover:bg-primary-foreground/6"
+                className="inline-flex items-center gap-2 rounded-xl border border-primary-foreground/20 px-5 py-3 text-sm font-semibold text-primary-foreground/80 backdrop-blur transition hover:border-primary-foreground/35 hover:bg-primary-foreground/6 sm:px-6 sm:py-3.5 sm:text-[15px]"
               >
                 I'm hiring →
               </Link>
@@ -247,7 +247,7 @@ function Hero() {
 
             {/* Trust row */}
             <div
-              className="animate-fade-up mt-10 flex flex-wrap items-center gap-x-5 gap-y-3"
+              className="animate-fade-up mt-7 flex flex-wrap items-center gap-x-4 gap-y-2.5 sm:gap-x-5 sm:gap-y-3"
               style={{ animationDelay: "290ms" }}
             >
               <div className="flex items-center gap-2 text-sm">
@@ -260,12 +260,12 @@ function Hero() {
                   <strong className="text-primary-foreground">4.9/5</strong> from 2,400+ reviews
                 </span>
               </div>
-              <span className="h-4 w-px bg-primary-foreground/15" />
+              <span className="hidden h-4 w-px bg-primary-foreground/15 sm:block" />
               <div className="flex items-center gap-1.5 text-sm text-primary-foreground/55">
                 <ShieldCheck className="h-4 w-4 text-accent" />
                 <strong className="text-primary-foreground">College-verified</strong> employers
               </div>
-              <span className="h-4 w-px bg-primary-foreground/15" />
+              <span className="hidden h-4 w-px bg-primary-foreground/15 sm:block" />
               <div className="flex items-center gap-1.5 text-sm text-primary-foreground/55">
                 <Award className="h-4 w-4 text-accent" />
                 <strong className="text-primary-foreground">28-day</strong> avg. hire
@@ -283,18 +283,20 @@ function Hero() {
       {/* ── Trusted-by strip ── */}
       <div className="relative border-t border-white/5 bg-white/[0.025]">
         <div className="mx-auto max-w-7xl px-4 py-4 lg:px-8">
-          <div className="flex flex-wrap items-center gap-6 lg:gap-10">
+          <div className="flex flex-wrap items-center gap-4 lg:gap-10">
             <p className="whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.18em] text-primary-foreground/25">
               Trusted by
             </p>
-            {["Toronto General","Vancouver Coastal Health","Sunnybrook","CHEO","McGill Health","AHS","PHSA"].map((h) => (
-              <span
-                key={h}
-                className="whitespace-nowrap text-xs font-semibold text-primary-foreground/20 transition hover:text-primary-foreground/50"
-              >
-                {h}
-              </span>
-            ))}
+            <div className="flex flex-wrap items-center gap-4 lg:gap-8">
+              {["Toronto General","Vancouver Coastal Health","Sunnybrook","CHEO","McGill Health","AHS","PHSA"].map((h) => (
+                <span
+                  key={h}
+                  className="whitespace-nowrap text-xs font-semibold text-primary-foreground/20 transition hover:text-primary-foreground/50"
+                >
+                  {h}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -458,8 +460,8 @@ function Stats() {
 
   return (
     <section ref={ref} className="relative bg-surface">
-      <div className="mx-auto max-w-7xl px-4 py-20 lg:px-8 lg:pt-32">
-        <div className="grid divide-y divide-border rounded-2xl border border-border bg-surface shadow-card sm:grid-cols-2 sm:divide-y-0 sm:divide-x lg:grid-cols-4">
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:py-20 lg:px-8 lg:pt-32">
+        <div className="grid divide-y divide-border rounded-2xl border border-border bg-surface shadow-card grid-cols-2 sm:grid-cols-2 sm:divide-y-0 sm:divide-x lg:grid-cols-4">
           {items.map((s, i) => (
             <StatItem key={s.label} {...s} seen={seen} delay={i * 80} />
           ))}
@@ -473,17 +475,17 @@ function StatItem({ value, label, suffix, icon: Icon, seen, delay }: { value: nu
   const v = useCounter(value, 1400, seen);
   return (
     <div
-      className={`relative p-7 ${seen ? "animate-fade-up" : "opacity-0"}`}
+      className={`relative p-5 sm:p-7 ${seen ? "animate-fade-up" : "opacity-0"}`}
       style={{ animationDelay: `${delay}ms` }}
     >
-      <span className="absolute left-0 top-7 hidden h-10 w-1 rounded-r-full bg-gradient-accent sm:block" />
-      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-accent">
-        <Icon className="h-5 w-5" />
+      <span className="absolute left-0 top-5 hidden h-10 w-1 rounded-r-full bg-gradient-accent sm:top-7 sm:block" />
+      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent sm:h-11 sm:w-11">
+        <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
       </div>
-      <div className="mt-5 text-4xl font-extrabold tracking-tight text-primary">
+      <div className="mt-4 text-2xl font-extrabold tracking-tight text-primary sm:mt-5 sm:text-4xl">
         {v.toLocaleString()}{suffix}
       </div>
-      <div className="mt-1 text-sm font-medium text-muted-foreground">{label}</div>
+      <div className="mt-1 text-xs font-medium text-muted-foreground sm:text-sm">{label}</div>
     </div>
   );
 }
@@ -492,35 +494,35 @@ function StatItem({ value, label, suffix, icon: Icon, seen, delay }: { value: nu
 function Specialties() {
   return (
     <section className="bg-surface-alt">
-      <div className="mx-auto max-w-7xl px-4 py-24 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
         <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
           <div className="max-w-2xl">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Browse by specialty</p>
-            <h2 className="mt-3 text-4xl font-extrabold tracking-tight text-primary sm:text-5xl">
+            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-primary sm:text-4xl lg:text-5xl">
               Explore by specialty
             </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
+            <p className="mt-3 text-base text-muted-foreground sm:mt-4 sm:text-lg">
               Find opportunities in your field of expertise — from acute care to community practice.
             </p>
           </div>
-          <Link to="/jobs" className="group inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:text-accent">
-            View all specialties <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          <Link to="/jobs" className="group inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:text-accent shrink-0">
+            View all <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </Link>
         </div>
 
-        <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="mt-8 grid grid-cols-2 gap-3 sm:mt-12 sm:gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {SPECIALTY_TILES.map(({ name, icon: Icon, count, color }, i) => (
             <Link
               key={name}
               to="/jobs"
               style={{ animationDelay: `${i * 40}ms` }}
-              className="animate-fade-up group relative overflow-hidden rounded-2xl border border-border bg-surface p-5 transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-hover"
+              className="animate-fade-up group relative overflow-hidden rounded-2xl border border-border bg-surface p-4 transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-hover sm:p-5"
             >
-              <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-linear-to-br ${color} transition group-hover:scale-110`}>
-                <Icon className="h-5 w-5" />
+              <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br ${color} transition group-hover:scale-110 sm:h-12 sm:w-12`}>
+                <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
-              <div className="mt-5 text-base font-bold text-primary">{name}</div>
-              <div className="mt-1 text-sm font-semibold text-accent">{count} positions</div>
+              <div className="mt-4 text-sm font-bold text-primary sm:mt-5 sm:text-base">{name}</div>
+              <div className="mt-0.5 text-xs font-semibold text-accent sm:mt-1 sm:text-sm">{count} positions</div>
               <div className="absolute inset-x-0 bottom-0 h-1 origin-left scale-x-0 bg-gradient-accent transition-transform duration-300 group-hover:scale-x-100" />
             </Link>
           ))}
@@ -574,18 +576,18 @@ function ProvinceCoverage() {
 
   return (
     <section className="bg-surface">
-      <div className="mx-auto max-w-7xl px-4 py-24 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Coast to coast</p>
-          <h2 className="mt-3 text-4xl font-extrabold tracking-tight text-primary sm:text-5xl">
-            Physician Opportunities Across Canada
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-primary sm:text-4xl lg:text-5xl">
+            Opportunities Across Canada
           </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+          <p className="mx-auto mt-3 max-w-2xl text-base text-muted-foreground sm:mt-4 sm:text-lg">
             From Vancouver to Halifax — coast to coast coverage
           </p>
         </div>
 
-        <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="mt-8 grid grid-cols-2 gap-3 sm:mt-12 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
           {PROVINCE_LIST.map(({ code, label }, i) => {
             const jobCount = isLoading ? null : (countMap[code] ?? 0);
             const hasJobs = jobCount != null && jobCount > 0;
@@ -594,16 +596,16 @@ function ProvinceCoverage() {
                 key={code}
                 href={`/jobs?province=${code}`}
                 style={{ animationDelay: `${i * 35}ms` }}
-                className="animate-fade-up group relative flex flex-col items-center rounded-2xl border border-border bg-surface p-5 text-center transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-hover"
+                className="animate-fade-up group relative flex flex-col items-center rounded-2xl border border-border bg-surface p-4 text-center transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-hover sm:p-5"
               >
-                <span className="text-2xl">🍁</span>
-                <div className="mt-2 text-sm font-bold text-primary leading-tight">{label}</div>
+                <span className="text-xl sm:text-2xl">🍁</span>
+                <div className="mt-2 text-xs font-bold text-primary leading-tight sm:text-sm">{label}</div>
                 {isLoading ? (
-                  <div className="mt-1.5 h-4 w-16 animate-pulse rounded bg-secondary" />
+                  <div className="mt-1.5 h-3.5 w-14 animate-pulse rounded bg-secondary" />
                 ) : hasJobs ? (
                   <div className="mt-1.5 text-xs font-semibold text-accent">{jobCount} {jobCount === 1 ? "job" : "jobs"}</div>
                 ) : (
-                  <span className="mt-1.5 inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                  <span className="mt-1.5 inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[9px] font-semibold text-muted-foreground sm:text-[10px]">
                     Coming Soon
                   </span>
                 )}
@@ -625,20 +627,20 @@ function HowItWorks() {
     <section className="relative isolate overflow-hidden bg-primary text-primary-foreground">
       <div className="absolute inset-0 bg-gradient-mesh opacity-60" />
       <div className="absolute inset-0 bg-grid opacity-[0.05]" />
-      <div className="relative mx-auto max-w-7xl px-4 py-24 lg:px-8 lg:py-32">
+      <div className="relative mx-auto max-w-7xl px-4 py-14 sm:py-24 lg:px-8 lg:py-32">
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">How it works</p>
-          <h2 className="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl">A simple, premium experience</h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-primary-foreground/70">
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl">A simple, premium experience</h2>
+          <p className="mx-auto mt-3 max-w-2xl text-base text-primary-foreground/70 sm:mt-4 sm:text-lg">
             Whether you&rsquo;re hiring or looking — we&rsquo;ve removed the friction.
           </p>
 
-          <div className="mt-8 inline-flex items-center gap-1 rounded-full border border-primary-foreground/15 bg-primary-foreground/5 p-1 backdrop-blur">
+          <div className="mt-6 inline-flex items-center gap-1 rounded-full border border-primary-foreground/15 bg-primary-foreground/5 p-1 backdrop-blur sm:mt-8">
             {(["physician", "employer"] as const).map((k) => (
               <button
                 key={k}
                 onClick={() => setTab(k)}
-                className={`rounded-full px-5 py-2 text-sm font-bold capitalize transition ${
+                className={`rounded-full px-4 py-2 text-sm font-bold capitalize transition sm:px-5 ${
                   tab === k ? "bg-accent text-primary shadow-glow" : "text-primary-foreground/70 hover:text-primary-foreground"
                 }`}
               >
@@ -648,21 +650,21 @@ function HowItWorks() {
           </div>
         </div>
 
-        <div className="relative mt-16 grid gap-6 lg:grid-cols-3">
+        <div className="relative mt-10 grid gap-4 sm:mt-16 sm:gap-6 lg:grid-cols-3">
           <div className="pointer-events-none absolute left-12 right-12 top-12 hidden h-px bg-linear-to-r from-transparent via-accent/40 to-transparent lg:block" />
           {steps.map((s, i) => (
             <div
               key={s.title}
               style={{ animationDelay: `${i * 100}ms` }}
-              className="animate-fade-up group relative rounded-2xl border border-primary-foreground/10 bg-primary-foreground/4 p-7 backdrop-blur transition hover:border-accent/30 hover:bg-primary-foreground/[0.07]"
+              className="animate-fade-up group relative rounded-2xl border border-primary-foreground/10 bg-primary-foreground/4 p-5 backdrop-blur transition hover:border-accent/30 hover:bg-primary-foreground/[0.07] sm:p-7"
             >
-              <span className="pointer-events-none absolute right-5 top-3 select-none text-7xl font-black text-primary-foreground/5">
+              <span className="pointer-events-none absolute right-5 top-3 select-none text-6xl font-black text-primary-foreground/5 sm:text-7xl">
                 {String(i + 1).padStart(2, "0")}
               </span>
-              <div className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-accent text-primary shadow-glow">
-                <s.icon className="h-5 w-5" />
+              <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-accent text-primary shadow-glow sm:h-12 sm:w-12">
+                <s.icon className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
-              <h3 className="relative mt-5 text-xl font-bold">{s.title}</h3>
+              <h3 className="relative mt-4 text-lg font-bold sm:mt-5 sm:text-xl">{s.title}</h3>
               <p className="relative mt-2 text-sm leading-relaxed text-primary-foreground/70">{s.desc}</p>
             </div>
           ))}
@@ -724,23 +726,23 @@ function FeaturedJobsSection() {
 
   return (
     <section className="bg-surface">
-      <div className="mx-auto max-w-7xl px-4 py-24 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
         <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Latest opportunities</p>
-            <h2 className="mt-3 text-4xl font-extrabold tracking-tight text-primary sm:text-5xl">
+            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-primary sm:text-4xl lg:text-5xl">
               Hand-picked physician roles
             </h2>
           </div>
-          <Link to="/jobs" className="group inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:text-accent">
-            View all jobs <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          <Link to="/jobs" className="group inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:text-accent shrink-0">
+            View all <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </Link>
         </div>
 
-        <div className="mt-12 grid gap-5 lg:grid-cols-2">
+        <div className="mt-8 grid gap-4 sm:mt-12 sm:gap-5 lg:grid-cols-2">
           {isLoading
             ? Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-52 animate-pulse rounded-2xl border border-border bg-secondary" />
+                <div key={i} className="h-44 animate-pulse rounded-2xl border border-border bg-secondary sm:h-52" />
               ))
             : featured.map((j, i) => {
                 const specialty = j.specialty_display ?? j.specialty ?? "";
@@ -752,39 +754,39 @@ function FeaturedJobsSection() {
                     to="/jobs/$jobId"
                     params={{ jobId: String(j.id) }}
                     style={{ animationDelay: `${i * 60}ms` }}
-                    className="animate-fade-up group relative flex flex-col rounded-2xl border border-border bg-surface p-6 shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-hover"
+                    className="animate-fade-up group relative flex flex-col rounded-2xl border border-border bg-surface p-4 shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-hover sm:p-6"
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${badge}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider sm:px-2.5 sm:py-1 ${badge}`}>
                           {specialty}
                         </span>
                         {j.job_type_display && (
-                          <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+                          <span className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary sm:px-2.5 sm:py-1">
                             {j.job_type_display}
                           </span>
                         )}
                       </div>
-                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-primary to-primary-light text-xs font-extrabold text-primary-foreground shadow-card">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-primary to-primary-light text-xs font-extrabold text-primary-foreground shadow-card sm:h-12 sm:w-12">
                         {initials}
                       </span>
                     </div>
 
-                    <h3 className="mt-4 text-xl font-bold tracking-tight text-primary transition group-hover:text-accent-alt">
+                    <h3 className="mt-3 text-base font-bold tracking-tight text-primary transition group-hover:text-accent-alt sm:mt-4 sm:text-xl">
                       {j.title}
                     </h3>
-                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
-                      {j.employer_name && <span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5" /> {j.employer_name}</span>}
-                      {j.location_display && <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" /> {j.location_display}</span>}
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground sm:gap-x-5 sm:gap-y-1.5 sm:text-sm">
+                      {j.employer_name && <span className="inline-flex items-center gap-1.5"><Building2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> {j.employer_name}</span>}
+                      {j.location_display && <span className="inline-flex items-center gap-1.5"><MapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> {j.location_display}</span>}
                       {getFeaturedSalaryLine(j) && (
                         <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
-                          <DollarSign className="h-3.5 w-3.5 text-accent" /> {getFeaturedSalaryLine(j)}
+                          <DollarSign className="h-3 w-3 text-accent sm:h-3.5 sm:w-3.5" /> {getFeaturedSalaryLine(j)}
                         </span>
                       )}
                     </div>
 
-                    <div className="mt-auto flex items-center justify-end border-t border-border pt-4">
-                      <span className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-xs font-bold text-primary transition group-hover:shadow-glow">
+                    <div className="mt-auto flex items-center justify-end border-t border-border pt-3 sm:pt-4">
+                      <span className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-3 py-1.5 text-xs font-bold text-primary transition group-hover:shadow-glow sm:px-4 sm:py-2">
                         View position <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
                       </span>
                     </div>
@@ -801,39 +803,39 @@ function FeaturedJobsSection() {
 function AssessmentBanner() {
   return (
     <section className="bg-surface-alt">
-      <div className="mx-auto max-w-7xl px-4 py-24 lg:px-8">
-        <div className="relative isolate overflow-hidden rounded-3xl bg-linear-to-br from-accent to-accent-alt p-10 shadow-elegant lg:p-16">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
+        <div className="relative isolate overflow-hidden rounded-3xl bg-linear-to-br from-accent to-accent-alt p-6 shadow-elegant sm:p-10 lg:p-16">
           <div className="absolute inset-0 bg-grid opacity-10" />
           <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-white/15 blur-3xl" />
           <div className="pointer-events-none absolute -left-24 -bottom-24 h-80 w-80 rounded-full bg-primary/30 blur-3xl" />
 
-          <div className="relative grid gap-10 lg:grid-cols-[1.3fr_1fr] lg:items-center">
+          <div className="relative grid gap-8 lg:grid-cols-[1.3fr_1fr] lg:items-center lg:gap-10">
             <div className="text-primary">
               <span className="inline-flex items-center gap-2 rounded-full bg-primary/15 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-primary backdrop-blur">
                 Free • 5 minutes
               </span>
-              <h2 className="mt-5 text-4xl font-extrabold tracking-tight sm:text-5xl">
+              <h2 className="mt-4 text-3xl font-extrabold tracking-tight sm:mt-5 sm:text-4xl lg:text-5xl">
                 Get matched with the perfect role.
               </h2>
-              <p className="mt-4 max-w-xl text-base leading-relaxed text-primary/80">
+              <p className="mt-3 max-w-xl text-sm leading-relaxed text-primary/80 sm:mt-4 sm:text-base">
                 Tell us about your specialty, lifestyle goals and practice preferences. Our recruiters will respond within one business day with a personalized career roadmap.
               </p>
-              <ul className="mt-6 space-y-2 text-sm font-medium text-primary">
+              <ul className="mt-5 space-y-2 text-sm font-medium text-primary sm:mt-6">
                 {["Personalized job matches", "Compensation benchmarks for your specialty", "Licensing & relocation guidance"].map((t) => (
                   <li key={t} className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4" /> {t}
+                    <CheckCircle2 className="h-4 w-4 shrink-0" /> {t}
                   </li>
                 ))}
               </ul>
               <Link
                 to="/assessment"
-                className="mt-8 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-bold text-primary-foreground transition hover:bg-primary-light hover:shadow-elegant"
+                className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground transition hover:bg-primary-light hover:shadow-elegant sm:mt-8 sm:px-6 sm:py-3.5"
               >
                 Start free assessment <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
 
-            {/* Floating preview */}
+            {/* Floating preview — desktop only */}
             <div className="relative hidden lg:block">
               <div className="rotate-2 rounded-2xl border border-white/40 bg-white/95 p-5 shadow-elegant">
                 <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
@@ -886,18 +888,18 @@ function Testimonials() {
 
   return (
     <section className="bg-surface">
-      <div className="mx-auto max-w-7xl px-4 py-24 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
         <div className="max-w-2xl">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">Physician stories</p>
-          <h2 className="mt-3 text-4xl font-extrabold tracking-tight text-primary sm:text-5xl">
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-primary sm:text-4xl lg:text-5xl">
             Trusted by Canada&rsquo;s medical community
           </h2>
         </div>
 
-        <div className="mt-12 grid gap-6 sm:grid-cols-2">
+        <div className="mt-8 grid gap-4 sm:mt-12 sm:grid-cols-2 sm:gap-6">
           {isLoading
             ? Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="h-48 animate-pulse rounded-2xl border border-border bg-secondary" />
+                <div key={i} className="h-44 animate-pulse rounded-2xl border border-border bg-secondary sm:h-48" />
               ))
             : items.map((t, i) => {
                 const initials = t.physician_name.split(" ").map((w) => w[0]).slice(0, 2).join("");
@@ -905,24 +907,24 @@ function Testimonials() {
                   <figure
                     key={t.id}
                     style={{ animationDelay: `${i * 80}ms` }}
-                    className="animate-fade-up group relative rounded-2xl border border-border bg-surface p-7 shadow-card transition hover:-translate-y-1 hover:shadow-hover"
+                    className="animate-fade-up group relative rounded-2xl border border-border bg-surface p-5 shadow-card transition hover:-translate-y-1 hover:shadow-hover sm:p-7"
                   >
-                    <Quote className="absolute right-6 top-6 h-12 w-12 rotate-180 text-accent/15" />
+                    <Quote className="absolute right-5 top-5 h-10 w-10 rotate-180 text-accent/15 sm:right-6 sm:top-6 sm:h-12 sm:w-12" />
                     <div className="flex gap-1 text-accent">
                       {Array.from({ length: 5 }).map((_, idx) => (
-                        <Star key={idx} className="h-4 w-4 fill-current" />
+                        <Star key={idx} className="h-3.5 w-3.5 fill-current sm:h-4 sm:w-4" />
                       ))}
                     </div>
-                    <blockquote className="relative mt-4 text-base italic leading-relaxed text-foreground/85">
+                    <blockquote className="relative mt-3 text-sm italic leading-relaxed text-foreground/85 sm:mt-4 sm:text-base">
                       &ldquo;{t.testimonial_text}&rdquo;
                     </blockquote>
-                    <figcaption className="mt-6 flex items-center gap-3">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-linear-to-br from-primary to-primary-light text-sm font-bold text-primary-foreground">
+                    <figcaption className="mt-5 flex items-center gap-3 sm:mt-6">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary to-primary-light text-sm font-bold text-primary-foreground sm:h-11 sm:w-11">
                         {initials}
                       </span>
-                      <div>
-                        <div className="text-sm font-bold text-primary">{t.physician_name}</div>
-                        <div className="text-xs text-muted-foreground">
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-primary truncate">{t.physician_name}</div>
+                        <div className="text-xs text-muted-foreground truncate">
                           {[t.specialty, t.location].filter(Boolean).join(" · ")}
                         </div>
                       </div>
@@ -940,32 +942,32 @@ function Testimonials() {
 function FinalCTA() {
   return (
     <section className="bg-surface-alt">
-      <div className="mx-auto max-w-7xl px-4 pb-24 lg:px-8">
-        <div className="relative isolate overflow-hidden rounded-3xl bg-primary p-10 text-primary-foreground shadow-elegant lg:p-16">
+      <div className="mx-auto max-w-7xl px-4 pb-14 sm:pb-20 lg:px-8 lg:pb-24">
+        <div className="relative isolate overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground shadow-elegant sm:p-10 lg:p-16">
           <div className="absolute inset-0 bg-gradient-mesh opacity-60" />
           <div className="absolute inset-0 bg-grid opacity-[0.06]" />
           <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-accent/30 blur-3xl" />
           <div className="pointer-events-none absolute -left-24 -bottom-24 h-80 w-80 rounded-full bg-accent-alt/30 blur-3xl" />
 
-          <div className="relative grid items-center gap-8 lg:grid-cols-[1.4fr_1fr]">
-            <div>
-              <h2 className="text-4xl font-extrabold tracking-tight sm:text-5xl">
+          <div className="relative flex flex-col gap-6 sm:gap-8 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-xl">
+              <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl lg:text-5xl">
                 Ready to take the next step?
               </h2>
-              <p className="mt-4 max-w-xl text-lg text-primary-foreground/75">
-                Join 9,000+ physicians who&rsquo;ve found their ideal practice through MedConnect Canada.
+              <p className="mt-3 text-base text-primary-foreground/75 sm:mt-4 sm:text-lg">
+                Join 9,000+ physicians who&rsquo;ve found their ideal practice through CandianMdJobs.
               </p>
             </div>
-            <div className="flex flex-wrap justify-end gap-3">
+            <div className="flex flex-wrap items-center gap-3 lg:shrink-0">
               <Link
                 to="/register/physician"
-                className="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-3.5 text-sm font-bold text-primary shadow-glow transition hover:scale-[1.02]"
+                className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-3 text-sm font-bold text-primary shadow-glow transition hover:scale-[1.02] sm:px-6 sm:py-3.5"
               >
                 Create physician profile <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 to="/employers"
-                className="inline-flex items-center gap-2 rounded-xl border border-primary-foreground/25 bg-primary-foreground/6 px-6 py-3.5 text-sm font-semibold text-primary-foreground backdrop-blur hover:bg-primary-foreground/12"
+                className="inline-flex items-center gap-2 rounded-xl border border-primary-foreground/25 bg-primary-foreground/6 px-5 py-3 text-sm font-semibold text-primary-foreground backdrop-blur hover:bg-primary-foreground/12 sm:px-6 sm:py-3.5"
               >
                 I&rsquo;m hiring
               </Link>

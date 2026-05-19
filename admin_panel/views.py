@@ -26,6 +26,7 @@ from core.permissions import IsAdminUser
 from faq.models import FAQ
 from jobs.models import Job, JobApplication
 from stats.models import PlatformStats
+from subscriptions.models import PaymentHistory, UserSubscription
 from testimonials.models import Testimonial
 
 from .filters import AdminAssessmentFilter, AdminContactFilter, AdminJobFilter, AdminUserFilter
@@ -145,10 +146,41 @@ class AdminDashboardView(APIView):
             {'month': m, **counts} for m, counts in sorted(growth_map.items())
         ]
 
+        # Revenue — live from PaymentHistory
+        from django.db.models import Sum
+        now = timezone.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        last_month_start = (month_start - timedelta(days=1)).replace(day=1)
+
+        total_revenue = PaymentHistory.objects.filter(status='succeeded').aggregate(t=Sum('amount'))['t'] or 0
+        this_month_revenue = PaymentHistory.objects.filter(status='succeeded', created_at__gte=month_start).aggregate(t=Sum('amount'))['t'] or 0
+        last_month_revenue = PaymentHistory.objects.filter(status='succeeded', created_at__gte=last_month_start, created_at__lt=month_start).aggregate(t=Sum('amount'))['t'] or 0
+
+        # Subscription breakdown
+        sub_counts = UserSubscription.objects.select_related('plan').values('plan__name', 'plan__is_free', 'plan__is_enterprise').annotate(count=Count('id'))
+        active_free = sum(r['count'] for r in sub_counts if r['plan__is_free'])
+        active_enterprise = sum(r['count'] for r in sub_counts if r['plan__is_enterprise'])
+        active_professional = sum(r['count'] for r in sub_counts if not r['plan__is_free'] and not r['plan__is_enterprise'])
+        active_subscriptions = UserSubscription.objects.filter(status='active').count()
+
+        # MRR estimate: sum of active non-free plan prices
+        mrr = UserSubscription.objects.filter(status='active', plan__is_free=False, plan__is_enterprise=False).select_related('plan').aggregate(t=Sum('plan__price_monthly'))['t'] or 0
+
+        # Monthly revenue chart — last 12 months from PaymentHistory
+        rev_rows = (
+            PaymentHistory.objects
+            .filter(status='succeeded', created_at__gte=twelve_months_ago)
+            .annotate(month=TruncMonth('created_at'))
+            .values('month')
+            .annotate(revenue=Sum('amount'), transactions=Count('id'))
+            .order_by('month')
+        )
+        rev_map = {row['month'].strftime('%b %Y'): {'revenue': float(row['revenue']), 'transactions': row['transactions']} for row in rev_rows}
         monthly_revenue_chart = []
         for i in range(11, -1, -1):
-            d = (timezone.now().replace(day=1) - timedelta(days=30 * i))
-            monthly_revenue_chart.append({'month': d.strftime('%b %Y'), 'revenue': 0})
+            d = (now.replace(day=1) - timedelta(days=30 * i))
+            key = d.strftime('%b %Y')
+            monthly_revenue_chart.append({'month': key, 'revenue': rev_map.get(key, {}).get('revenue', 0), 'transactions': rev_map.get(key, {}).get('transactions', 0)})
 
         recent_jobs = AdminJobListSerializer(
             _job_qs().order_by('-created_at')[:5], many=True
@@ -169,9 +201,14 @@ class AdminDashboardView(APIView):
                 'total_assessments': CareerAssessment.objects.count(),
                 'unreviewed_assessments': CareerAssessment.objects.filter(is_reviewed=False).count(),
                 'unread_contacts': ContactSubmission.objects.filter(is_responded=False).count(),
-                'total_revenue': '0.00',
-                'monthly_revenue': '0.00',
-                'active_subscriptions': 0,
+                'total_revenue': str(round(float(total_revenue), 2)),
+                'monthly_revenue': str(round(float(this_month_revenue), 2)),
+                'last_month_revenue': str(round(float(last_month_revenue), 2)),
+                'mrr': str(round(float(mrr), 2)),
+                'active_subscriptions': active_subscriptions,
+                'active_free': active_free,
+                'active_professional': active_professional,
+                'active_enterprise': active_enterprise,
             },
             'recent_jobs': recent_jobs,
             'recent_users': recent_users,

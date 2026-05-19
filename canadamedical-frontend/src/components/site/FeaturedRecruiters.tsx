@@ -56,7 +56,7 @@ export function FeaturedRecruiters() {
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-accent">Featured Employers</p>
             <h2 className="mt-2 text-3xl font-bold text-primary sm:text-4xl">Hospitals &amp; clinics hiring now</h2>
             <p className="mt-3 max-w-2xl text-muted-foreground">
-              Canada's leading health systems and private practices actively recruiting through MedConnect.
+              Canada's leading health systems and private practices actively recruiting through CandianMdJobs.
             </p>
           </div>
           <Link to="/jobs" className="text-sm font-semibold text-primary hover:text-primary-glow">

@@ -7,7 +7,7 @@ import { Field, Input, Select, Textarea, SubmitButton, SuccessNotice } from "@/c
 import { api, apiError } from "@/lib/api";
 
 export const Route = createFileRoute("/contact")({
-  head: () => ({ meta: [{ title: "Contact Us — MedConnect Canada" }] }),
+  head: () => ({ meta: [{ title: "Contact Us — CandianMdJobs" }] }),
   component: ContactPage,
 });
 
@@ -64,7 +64,7 @@ function ContactPage() {
   }
   return (
     <div>
-      <PageHeader eyebrow="Get in touch" title="Contact MedConnect Canada" subtitle="Whether you're a physician exploring options or an employer ready to hire — we're here." />
+      <PageHeader eyebrow="Get in touch" title="Contact CandianMdJobs" subtitle="Whether you're a physician exploring options or an employer ready to hire — we're here." />
 
       <section className="mx-auto -mt-12 grid max-w-7xl gap-8 px-4 pb-16 lg:grid-cols-[1fr_2fr] lg:px-8">
         <aside className="space-y-4">
@@ -75,7 +75,7 @@ function ContactPage() {
             <div className="flex items-start gap-3"><Phone className="mt-0.5 h-5 w-5 text-accent" /><div><div className="font-semibold text-primary">Phone</div><div className="text-sm text-muted-foreground">+1 (800) 555-0199<br/>Mon–Fri 8am–6pm ET</div></div></div>
           </div>
           <div className="rounded-2xl border border-border bg-card p-6 shadow-(--shadow-card)">
-            <div className="flex items-start gap-3"><Mail className="mt-0.5 h-5 w-5 text-accent" /><div><div className="font-semibold text-primary">Email</div><div className="text-sm text-muted-foreground">hello@medconnect.ca</div></div></div>
+            <div className="flex items-start gap-3"><Mail className="mt-0.5 h-5 w-5 text-accent" /><div><div className="font-semibold text-primary">Email</div><div className="text-sm text-muted-foreground">hello@CandianMdJobs.ca</div></div></div>
           </div>
         </aside>
         <div className="rounded-2xl border border-border bg-card p-6 shadow-(--shadow-card) sm:p-10">

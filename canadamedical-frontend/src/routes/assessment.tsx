@@ -16,7 +16,7 @@ import { SPECIALTIES, PROVINCES } from "@/data/jobs";
 export const Route = createFileRoute("/assessment")({
   head: () => ({
     meta: [
-      { title: "Free Career Assessment — MedConnect Canada" },
+      { title: "Free Career Assessment — CandianMdJobs" },
       { name: "description", content: "Get a personalized career roadmap from our recruiters. Free 5-minute assessment." },
     ],
   }),
@@ -582,7 +582,7 @@ function AssessmentPage() {
                     ]}
                   </dl>
                   <p className="mt-3 text-xs text-muted-foreground">
-                    By submitting, you agree that a MedConnect recruiter may contact you via the email and phone provided. We never share your data with third parties.
+                    By submitting, you agree that a CandianMdJobs recruiter may contact you via the email and phone provided. We never share your data with third parties.
                   </p>
                 </div>
               </div>
