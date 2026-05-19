@@ -1,283 +1,225 @@
-# Canadian Physician Recruitment — Django REST API
+# CanadianMDjobs — Physician Recruitment Platform
 
-A complete backend API for the Canadian Physician Recruitment Platform, connecting job-seeking physicians with healthcare employers and recruiters across Canada.
-
----
-
-## Prerequisites
-
-- Python 3.11+
-- PostgreSQL 14+
-- pip
+Canada's dedicated physician recruitment platform connecting physicians with hospitals, clinics and health authorities.
 
 ---
 
-## Installation
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | Django 6, Django REST Framework, Daphne (ASGI) |
+| Frontend | React 19, Vite, TanStack Router, Tailwind CSS |
+| Database | PostgreSQL 16 |
+| Cache / Queue | Redis 7 + Celery |
+| Payments | Stripe |
+| Email | Resend |
+| Storage | AWS S3 (optional) |
+
+---
+
+## Run with Docker (Recommended)
+
+The easiest way to run the entire project — no Python, Node, or PostgreSQL installation needed. Docker handles everything.
+
+### Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) — that's it
+
+### Step 1 — Clone the repository
 
 ```bash
-# 1. Clone / enter the project directory
+git clone <repo-url>
 cd CanadianMedProject
+```
 
-# 2. Create and activate virtual environment
+### Step 2 — Set up environment variables
+
+```bash
+# Backend
+cp .env.example .env
+
+# Frontend
+cp canadamedical-frontend/.env.example canadamedical-frontend/.env
+```
+
+Open `.env` and fill in your values:
+
+| Variable | Where to get it |
+|----------|----------------|
+| `SECRET_KEY` | Generate: `python -c "import secrets; print(secrets.token_urlsafe(50))"` |
+| `DB_PASSWORD` | Any password you choose |
+| `STRIPE_SECRET_KEY` | [stripe.com](https://stripe.com) → Developers → API keys |
+| `STRIPE_PUBLISHABLE_KEY` | Same as above |
+| `STRIPE_WEBHOOK_SECRET` | See Stripe Webhook section below |
+| `RESEND_API_KEY` | [resend.com](https://resend.com) → API Keys (free tier available) |
+
+The frontend `.env` only needs one line — leave it as-is:
+```
+VITE_API_URL=http://localhost:8000
+```
+
+### Step 3 — Start everything
+
+```bash
+docker compose up --build
+```
+
+First build takes ~3-5 minutes. After that:
+
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:5173 |
+| Backend API | http://localhost:8000 |
+| API Docs (Swagger) | http://localhost:8000/api/schema/swagger-ui/ |
+| Django Admin | http://localhost:8000/admin/ |
+
+### Step 4 — Create admin account (first time only)
+
+```bash
+docker compose exec backend python manage.py createsuperuser
+```
+
+### Step 5 — Set up Stripe Webhook (for payments to work)
+
+Install [Stripe CLI](https://stripe.com/docs/stripe-cli):
+
+```bash
+# macOS
+brew install stripe/stripe-cli/stripe
+
+# Windows
+winget install Stripe.StripeCLI
+```
+
+In a separate terminal (while Docker is running):
+
+```bash
+stripe login
+stripe listen --forward-to localhost:8000/api/subscriptions/webhook/
+```
+
+Copy the `whsec_...` key it shows and paste it into `.env` as `STRIPE_WEBHOOK_SECRET`, then restart:
+
+```bash
+docker compose restart backend
+```
+
+### Stop / Reset
+
+```bash
+# Stop all services
+docker compose down
+
+# Stop and delete all data (fresh start)
+docker compose down -v
+```
+
+---
+
+## Stripe Test Cards
+
+Use these card numbers when testing payments (no real money charged):
+
+| Card Number | Result |
+|-------------|--------|
+| `4242 4242 4242 4242` | Payment succeeds |
+| `4000 0000 0000 9995` | Payment declined |
+| `4000 0025 0000 3155` | Requires 3D Secure |
+
+Use any future expiry date and any 3-digit CVV.
+
+---
+
+## Run Locally Without Docker
+
+### Prerequisites
+
+- Python 3.11+
+- Node.js 20+ and [Bun](https://bun.sh)
+- PostgreSQL 16
+- Redis (optional — only for async email/tasks)
+
+### Backend
+
+```bash
+# 1. Create virtual environment
 python -m venv venv
 
 # Windows
 venv\Scripts\activate
-
-# macOS/Linux
+# macOS / Linux
 source venv/bin/activate
 
-# 3. Install dependencies
+# 2. Install dependencies
 pip install -r requirements.txt
-```
 
----
+# 3. Set up environment
+cp .env.example .env
+# Edit .env with your values
 
-## Environment Setup
-
-Copy `.env` and fill in your values:
-
-```bash
-cp .env .env.local   # optional — edit .env directly
-```
-
-Required `.env` variables:
-
-| Variable | Description |
-|---|---|
-| `SECRET_KEY` | Django secret key (generate a strong random string) |
-| `DEBUG` | `True` for dev, `False` for production |
-| `ALLOWED_HOSTS` | Comma-separated allowed hosts |
-| `DB_NAME` | PostgreSQL database name |
-| `DB_USER` | PostgreSQL username |
-| `DB_PASSWORD` | PostgreSQL password |
-| `DB_HOST` | Database host (default: localhost) |
-| `DB_PORT` | Database port (default: 5432) |
-| `AWS_ACCESS_KEY_ID` | AWS key (leave blank to use local media storage) |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret |
-| `AWS_STORAGE_BUCKET_NAME` | S3 bucket name |
-| `AWS_S3_REGION_NAME` | AWS region (default: ca-central-1) |
-| `EMAIL_HOST` | SMTP host |
-| `EMAIL_PORT` | SMTP port |
-| `EMAIL_HOST_USER` | Email address |
-| `EMAIL_HOST_PASSWORD` | Email app password |
-| `FRONTEND_URL` | Frontend URL for password reset links |
-
----
-
-## Database Setup
-
-```bash
-# Create the PostgreSQL database
+# 4. Create database
 psql -U postgres -c "CREATE DATABASE canadian_med_db;"
 
-# Run migrations
+# 5. Run migrations
 python manage.py migrate
 
-# Create a superuser (admin)
+# 6. Create admin account
 python manage.py createsuperuser
+
+# 7. Start server
+python -m daphne -p 8000 core.asgi:application
 ```
 
----
-
-## Run Development Server
+### Frontend
 
 ```bash
-python manage.py runserver
+cd canadamedical-frontend
+
+bun install
+
+cp .env.example .env
+
+bun dev
 ```
 
-Server starts at: `http://127.0.0.1:8000`
+### Celery (optional — needed for async email)
 
----
-
-## API Documentation
-
-| URL | Description |
-|---|---|
-| `/api/docs/` | Swagger UI (interactive) |
-| `/api/redoc/` | ReDoc documentation |
-| `/api/schema/` | OpenAPI schema (JSON/YAML) |
-
----
-
-## API Endpoints Overview
-
-### Authentication (`/api/auth/`)
-
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| POST | `/api/auth/register/physician/` | Public | Register as physician |
-| POST | `/api/auth/register/employer/` | Public | Register as employer |
-| POST | `/api/auth/login/` | Public | Login — returns JWT tokens |
-| POST | `/api/auth/logout/` | Auth | Logout — blacklists refresh token |
-| POST | `/api/auth/token/refresh/` | Public | Refresh access token |
-| POST | `/api/auth/password/reset/` | Public | Request password reset email |
-| POST | `/api/auth/password/reset/confirm/` | Public | Confirm password reset |
-| GET/PUT | `/api/auth/me/` | Auth | Get / update current user info |
-
-### Profiles (`/api/profile/`)
-
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| GET/PUT | `/api/profile/physician/` | Physician | Get / update physician profile |
-| POST | `/api/profile/physician/resume/` | Physician | Upload resume (PDF/DOC/DOCX, max 5MB) |
-| GET/PUT | `/api/profile/employer/` | Employer | Get / update employer profile |
-
-### Jobs (`/api/jobs/`)
-
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| GET | `/api/jobs/` | Public | List active approved jobs (filterable) |
-| POST | `/api/jobs/` | Employer | Create job posting |
-| GET | `/api/jobs/{id}/` | Public | Job detail (increments view count) |
-| PUT | `/api/jobs/{id}/` | Employer (owner) | Update job |
-| DELETE | `/api/jobs/{id}/` | Employer (owner) | Delete job |
-| GET | `/api/jobs/my-jobs/` | Employer | Own job listings |
-| POST | `/api/jobs/{id}/apply/` | Physician | Apply to job |
-| GET | `/api/jobs/my-applications/` | Physician | Own applications |
-| DELETE | `/api/jobs/applications/{id}/` | Physician | Withdraw application |
-| POST | `/api/jobs/{id}/save/` | Physician | Save a job |
-| DELETE | `/api/jobs/{id}/unsave/` | Physician | Unsave a job |
-| GET | `/api/jobs/saved/` | Physician | List saved jobs |
-| GET | `/api/jobs/specialties/` | Public | List specialty choices |
-| GET | `/api/jobs/sub-specialties/` | Public | List sub-specialty choices |
-| GET | `/api/jobs/provinces/` | Public | List Canadian provinces |
-
-**Job Search Filters:**
-```
-GET /api/jobs/?keyword=cardiology
-GET /api/jobs/?specialty=cardiology
-GET /api/jobs/?sub_specialty=nephrology
-GET /api/jobs/?province=ON
-GET /api/jobs/?city=Toronto
-GET /api/jobs/?job_type=full_time
-GET /api/jobs/?employer=Toronto+General
-GET /api/jobs/?ordering=-created_at
-GET /api/jobs/?specialty=cardiology&province=ON&job_type=locum
+```bash
+# In a separate terminal (with venv active)
+celery -A core worker -l info
 ```
 
-### Career Assessments (`/api/assessments/`)
-
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| POST | `/api/assessments/` | Public | Submit career assessment |
-| GET | `/api/assessments/` | Admin | List all submissions |
-| GET | `/api/assessments/{id}/` | Admin | Assessment detail |
-| PATCH | `/api/assessments/{id}/` | Admin | Mark as reviewed |
-
-### Testimonials (`/api/testimonials/`)
-
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| GET | `/api/testimonials/` | Public | List active testimonials |
-| POST | `/api/testimonials/` | Admin | Create testimonial |
-| PUT | `/api/testimonials/{id}/` | Admin | Update testimonial |
-| DELETE | `/api/testimonials/{id}/` | Admin | Delete testimonial |
-
-### Contact (`/api/contact/`)
-
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| POST | `/api/contact/` | Public | Submit contact form |
-| GET | `/api/contact/` | Admin | List all submissions |
-| PATCH | `/api/contact/{id}/` | Admin | Mark as responded |
-
-### FAQ (`/api/faq/`)
-
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| GET | `/api/faq/` | Public | List active FAQs |
-| GET | `/api/faq/?category=physician` | Public | Filter by category |
-| POST | `/api/faq/` | Admin | Create FAQ |
-| PUT | `/api/faq/{id}/` | Admin | Update FAQ |
-| DELETE | `/api/faq/{id}/` | Admin | Delete FAQ |
-
-### Stats (`/api/stats/`)
-
-| Method | Endpoint | Access | Description |
-|---|---|---|---|
-| GET | `/api/stats/` | Public | Get platform statistics |
-| PUT | `/api/stats/` | Admin | Update statistics |
-
 ---
 
-## Django Admin
+## Docker Commands Reference
 
-Access at: `http://127.0.0.1:8000/admin/`
+```bash
+# View logs from all services
+docker compose logs -f
 
-Features:
-- Full user management (physicians & employers)
-- Job approval workflow (bulk approve / deactivate)
-- Career assessment review queue
-- Testimonials ordering and visibility management
-- FAQ ordering and category management
-- Contact form response tracking
-- Platform stats management
+# View logs from one service only
+docker compose logs -f backend
+docker compose logs -f celery
+docker compose logs -f frontend
 
----
+# Run a Django management command
+docker compose exec backend python manage.py <command>
 
-## Authentication Flow
+# Open Django shell
+docker compose exec backend python manage.py shell
 
-The API uses JWT Bearer tokens:
+# Run migrations manually
+docker compose exec backend python manage.py migrate
 
-```
-Authorization: Bearer <access_token>
-```
+# Check Redis is working
+docker compose exec redis redis-cli ping
 
-1. Register or login → receive `access` + `refresh` tokens
-2. Include `access` token in `Authorization` header for protected endpoints
-3. When access token expires (60 min), use `refresh` token at `/api/auth/token/refresh/`
-4. On logout, send `refresh` token to blacklist it
+# Check all service status
+docker compose ps
 
-JWT custom claims include: `user_type`, `full_name`, `email`
-
----
-
-## File Upload Rules
-
-| File Type | Allowed Formats | Max Size |
-|---|---|---|
-| Resume (physician) | PDF, DOC, DOCX | 5 MB |
-| Assessment resume | PDF, DOC, DOCX | 5 MB |
-| Testimonial photo | JPG, PNG | 2 MB |
-
----
-
-## Deployment (Railway / Render)
-
-1. Set all environment variables in the platform dashboard
-2. Set `DEBUG=False`
-3. Set `ALLOWED_HOSTS=your-domain.com`
-4. Set `SECRET_KEY` to a strong random value
-5. Configure a PostgreSQL database (Railway/Render provide managed Postgres)
-6. Configure AWS S3 for file storage (set `AWS_*` variables)
-7. Run build command:
-   ```bash
-   pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate
-   ```
-8. Start command:
-   ```bash
-   gunicorn core.wsgi:application --bind 0.0.0.0:$PORT
-   ```
-9. Install gunicorn: `pip install gunicorn` and add to requirements.txt
-
-**Render `render.yaml` example:**
-```yaml
-services:
-  - type: web
-    name: canadian-med-api
-    env: python
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate
-    startCommand: gunicorn core.wsgi:application --bind 0.0.0.0:$PORT
-    envVars:
-      - key: SECRET_KEY
-        generateValue: true
-      - key: DEBUG
-        value: False
-      - key: DATABASE_URL
-        fromDatabase:
-          name: canadian-med-db
-          property: connectionString
+# Rebuild after changing requirements.txt or package.json
+docker compose up --build
 ```
 
 ---
@@ -286,22 +228,83 @@ services:
 
 ```
 CanadianMedProject/
-├── core/                   # Django project config
-│   ├── settings.py
-│   ├── urls.py
-│   ├── pagination.py       # Standard paginator
-│   ├── exceptions.py       # Custom error + success responses
-│   └── permissions.py      # IsPhysician, IsEmployer, etc.
-├── accounts/               # Users, physician & employer profiles
+├── accounts/               # User auth & profiles (physician + employer)
 ├── jobs/                   # Job listings, applications, saved jobs
-├── assessments/            # Free career assessment submissions
+├── subscriptions/          # Stripe subscription plans
+├── notifications/          # Real-time WebSocket notifications
+├── assessments/            # Career assessment form submissions
+├── contact/                # Contact form
+├── faq/                    # FAQ management
 ├── testimonials/           # Physician testimonials
-├── contact/                # Contact form submissions
-├── faq/                    # FAQ items
-├── stats/                  # Platform statistics + signals
-├── media/                  # Local file uploads (dev only)
-├── staticfiles/            # Collected static files
-├── .env                    # Environment variables
-├── requirements.txt
-└── manage.py
+├── emails/                 # Email templates & Resend integration
+├── admin_panel/            # Custom admin API endpoints
+├── stats/                  # Platform statistics
+├── core/                   # Django settings, URLs, ASGI, Celery
+├── canadamedical-frontend/ # React 19 frontend
+│   ├── src/
+│   │   ├── routes/         # All pages (TanStack Router)
+│   │   ├── components/     # Shared UI components
+│   │   ├── hooks/          # Custom React hooks
+│   │   └── lib/            # API client, utilities
+│   ├── Dockerfile
+│   └── .env.example
+├── Dockerfile              # Backend Dockerfile
+├── docker-compose.yml      # All 5 services together
+├── requirements.txt        # Python dependencies
+├── .env.example            # Copy this to .env and fill in values
+└── README.md
 ```
+
+---
+
+## API Documentation
+
+| URL | Description |
+|-----|-------------|
+| `/api/schema/swagger-ui/` | Swagger UI (interactive, try endpoints) |
+| `/api/schema/redoc/` | ReDoc documentation |
+| `/api/schema/` | Raw OpenAPI schema (JSON) |
+
+---
+
+## Authentication
+
+JWT Bearer tokens in every protected request:
+
+```
+Authorization: Bearer <access_token>
+```
+
+- Access token lifetime: 60 minutes
+- Refresh token lifetime: 7 days
+- Refresh via: `POST /api/auth/token/refresh/`
+- JWT claims include: `user_type`, `full_name`, `email`
+
+---
+
+## Environment Variables Reference
+
+### Backend (`.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SECRET_KEY` | Yes | Django cryptographic key — generate a unique one |
+| `DEBUG` | Yes | `True` for dev, `False` for production |
+| `ALLOWED_HOSTS` | Yes | Comma-separated: `localhost,127.0.0.1` |
+| `DB_NAME` | Yes | PostgreSQL database name |
+| `DB_USER` | Yes | PostgreSQL username |
+| `DB_PASSWORD` | Yes | PostgreSQL password |
+| `DB_HOST` | Yes | `localhost` locally, `db` in Docker (auto-set) |
+| `STRIPE_SECRET_KEY` | Yes | From Stripe dashboard |
+| `STRIPE_PUBLISHABLE_KEY` | Yes | From Stripe dashboard |
+| `STRIPE_WEBHOOK_SECRET` | Yes | From `stripe listen` CLI output |
+| `RESEND_API_KEY` | Yes | From resend.com |
+| `REDIS_URL` | No | Enables Celery async tasks and WebSockets |
+| `AWS_ACCESS_KEY_ID` | No | AWS S3 for file storage in production |
+| `SECURE_SSL` | No | Set `True` only in production with real HTTPS |
+
+### Frontend (`canadamedical-frontend/.env`)
+
+| Variable | Description |
+|----------|-------------|
+| `VITE_API_URL` | Backend URL — `http://localhost:8000` for local/Docker |
