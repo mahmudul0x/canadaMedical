@@ -51,7 +51,7 @@ export function Header() {
       }`}
     >
       <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-6 px-4 lg:px-8">
-        <Logo />
+        <Logo size="lg" />
 
         <nav className="hidden items-center gap-1 lg:flex">
           {nav.map((n) => {

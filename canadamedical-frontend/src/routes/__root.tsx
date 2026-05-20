@@ -117,21 +117,16 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hideChrome = pathname.startsWith("/admin") || pathname.startsWith("/dashboard");
-  const isJobsPage = pathname === "/jobs";
-
   return (
     <QueryClientProvider client={queryClient}>
-      <div className={isJobsPage
-        ? "flex h-screen flex-col overflow-hidden bg-background"
-        : "flex min-h-screen flex-col bg-background"
-      }>
+      <div className="flex min-h-screen flex-col bg-background">
         {!hideChrome && <Header />}
-        <main className={isJobsPage ? "flex flex-1 flex-col overflow-hidden" : "flex-1 flex flex-col"}>
+        <main className="flex-1 flex flex-col">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>
         </main>
-        {!hideChrome && !isJobsPage && <Footer />}
+        {!hideChrome && <Footer />}
         <Toaster
           position="top-right"
           toastOptions={{

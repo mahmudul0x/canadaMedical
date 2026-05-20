@@ -6,7 +6,14 @@ from django.core.management.base import BaseCommand
 class Command(BaseCommand):
     help = 'Create Stripe product & price for the Professional plan and save IDs to DB'
 
-    def handle(self, *args, **kwargs):
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--force',
+            action='store_true',
+            help='Overwrite existing Stripe product and price IDs for the Professional plan.',
+        )
+
+    def handle(self, *args, **options):
         from subscriptions.models import SubscriptionPlan
 
         stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -24,7 +31,7 @@ class Command(BaseCommand):
                 f'Professional plan already has stripe_price_id: {plan.stripe_price_id}'
             ))
             self.stdout.write('Pass --force to overwrite.')
-            if '--force' not in self.argv:
+            if not options['force']:
                 return
 
         self.stdout.write('Creating Stripe product...')

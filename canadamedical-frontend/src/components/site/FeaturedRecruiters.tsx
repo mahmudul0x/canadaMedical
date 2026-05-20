@@ -35,10 +35,10 @@ function useFeaturedRecruiters() {
 }
 
 const FALLBACK: FeaturedRecruiter[] = [
-  { id: "tgh", name: "Toronto General Hospital", location: "Toronto, ON", open_jobs: 24, description: "One of Canada's premier academic health centres." },
-  { id: "stp", name: "St. Paul's Hospital", location: "Vancouver, BC", open_jobs: 18, description: "Level 1 trauma centre in downtown Vancouver." },
-  { id: "csj", name: "CHU Sainte-Justine", location: "Montreal, QC", open_jobs: 14, description: "Renowned mother-and-child university hospital." },
-  { id: "ral", name: "Royal Alexandra Hospital", location: "Edmonton, AB", open_jobs: 11, description: "Large urban teaching hospital with broad case mix." },
+  { id: "tgh", name: "Vancouver Coastal Health", location: "Vancouver, BC", open_jobs: 34, description: "Community hospitals, clinics & research" },
+  { id: "stp", name: "St. Paul's Hospital", location: "Vancouver, BC", open_jobs: 31, description: "Leading in research & education" },
+  { id: "csj", name: "OCH Regional Health", location: "Ottawa, Ontario", open_jobs: 14, description: "Community hospitals and specialized care." },
+  { id: "ral", name: "Alberta Health Services", location: "Edmonton, AB", open_jobs: 34, description: "Large health network & hospitals across Alberta." },
 ];
 
 export function FeaturedRecruiters() {
@@ -46,69 +46,75 @@ export function FeaturedRecruiters() {
   useEffect(() => {
     if (isError) toast.error(`Featured employers: ${apiError(error)}`, { id: "feat-rec-err" });
   }, [isError, error]);
-  const recruiters = (!isError && data && data.length > 0 ? data : FALLBACK).slice(0, 8);
+  const recruiters = (!isError && data && data.length > 0 ? data : FALLBACK).slice(0, 4);
 
   return (
-    <section className="bg-secondary/40">
-      <div className="mx-auto max-w-7xl px-4 py-20 lg:px-8">
-        <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
+    <section className="bg-[#f8faff]">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:py-20 lg:px-8 lg:py-24">
+        <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-accent">Featured Employers</p>
-            <h2 className="mt-2 text-3xl font-bold text-primary sm:text-4xl">Hospitals &amp; clinics hiring now</h2>
-            <p className="mt-3 max-w-2xl text-muted-foreground">
-              Canada's leading health systems and private practices actively recruiting through CandianMdJobs.
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#1a6fd4]">Featured Employers</p>
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-[#0f1f3d] sm:text-4xl">
+              Hospitals &amp; clinics hiring now
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm text-slate-500">
+              Canada's leading healthcare organisations are actively recruiting through CandianMdJobs.
             </p>
           </div>
-          <Link to="/jobs" className="text-sm font-semibold text-primary hover:text-primary-glow">
-            View all employers →
+          <Link to="/jobs" className="group inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-[#1a6fd4] shrink-0">
+            View all employers <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
           </Link>
         </div>
 
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
           {isLoading
             ? Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="h-44 animate-pulse rounded-2xl border border-border bg-card" />
+                <div key={i} className="h-44 animate-pulse rounded-2xl border border-slate-100 bg-white" />
               ))
             : recruiters.map((r) => (
                 <article
                   key={r.id}
-                  className="group flex flex-col rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-card)] transition hover:-translate-y-1 hover:border-accent"
+                  className="group flex flex-col rounded-2xl border border-slate-100 bg-white p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#1a6fd4]/20 hover:shadow-lg"
                 >
-                  <div className="flex items-start gap-3">
+                  {/* Logo / icon */}
+                  <div className="flex items-center gap-3 mb-3">
                     {r.logo ? (
-                      <img src={r.logo} alt={r.name} loading="lazy" className="h-12 w-12 rounded-lg object-cover" />
+                      <img src={r.logo} alt={r.name} loading="lazy" className="h-10 w-10 rounded-xl object-cover" />
                     ) : (
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-accent-soft text-primary">
-                        <Building2 className="h-6 w-6" />
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1a6fd4]/10">
+                        <Building2 className="h-5 w-5 text-[#1a6fd4]" />
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-sm font-bold text-primary">{r.name}</h3>
+                      <h3 className="truncate text-sm font-bold text-[#0f1f3d]">{r.name}</h3>
                       {r.location && (
-                        <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                          <MapPin className="h-3.5 w-3.5" /> {r.location}
+                        <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400">
+                          <MapPin className="h-3 w-3" /> {r.location}
                         </p>
                       )}
                     </div>
                   </div>
+
                   {r.description && (
-                    <p className="mt-3 line-clamp-3 flex-1 text-sm text-foreground/75">{r.description}</p>
+                    <p className="flex-1 text-xs leading-relaxed text-slate-500 line-clamp-2">{r.description}</p>
                   )}
-                  <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
-                    <span className="flex items-center gap-1.5 text-xs font-semibold text-accent">
-                      <Briefcase className="h-3.5 w-3.5" />
+
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                    <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                      <Briefcase className="h-3 w-3" />
                       {(r.open_jobs ?? r.jobs_count ?? 0)} open roles
                     </span>
                     <Link
                       to="/jobs"
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary-glow"
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:border-[#1a6fd4] hover:text-[#1a6fd4]"
                     >
-                      View <ArrowRight className="h-3.5 w-3.5" />
+                      View <ArrowRight className="h-3 w-3" />
                     </Link>
                   </div>
                 </article>
               ))}
         </div>
+
         {isError && (
           <div className="mt-6">
             <ErrorState
@@ -117,7 +123,7 @@ export function FeaturedRecruiters() {
               onRetry={() => refetch()}
             />
             {isFetching && (
-              <p className="mt-2 text-xs text-muted-foreground">Retrying…</p>
+              <p className="mt-2 text-xs text-slate-400">Retrying…</p>
             )}
           </div>
         )}

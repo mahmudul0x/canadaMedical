@@ -1,23 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Search,
-  MapPin,
-  Briefcase,
-  Building2,
-  SlidersHorizontal,
-  ArrowRight,
-  X,
-  Clock,
-  Stethoscope,
-  BadgeCheck,
-  LayoutGrid,
-  List,
-  ChevronDown,
-  Check,
-  DollarSign,
+  Search, MapPin, Briefcase, Building2, SlidersHorizontal, ArrowRight,
+  X, Clock, Stethoscope, BadgeCheck, LayoutGrid, List,
+  ChevronDown, Check, DollarSign,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -27,44 +14,21 @@ export const Route = createFileRoute("/jobs/")({
   head: () => ({
     meta: [
       { title: "Find a Physician Job in Canada — CandianMdJobs" },
-      {
-        name: "description",
-        content: "Search 1,200+ physician jobs across Canada by specialty, province, and employer type.",
-      },
+      { name: "description", content: "Search 1,200+ physician jobs across Canada by specialty, province, and employer type." },
     ],
   }),
   component: JobsPage,
 });
 
 interface Job {
-  id: number;
-  title: string;
-  specialty: string;
-  specialty_display: string;
-  job_type: string;
-  job_type_display: string;
-  employer_name: string;
-  city: string;
-  province: string;
-  province_display: string;
-  location_display: string;
-  created_at: string;
-  is_featured?: boolean;
-  summary?: string;
-  salary_display?: string;
-  salary_min?: number;
-  salary_max?: number;
-  practice_setting?: string;
+  id: number; title: string; specialty: string; specialty_display: string;
+  job_type: string; job_type_display: string; employer_name: string;
+  city: string; province: string; province_display: string; location_display: string;
+  created_at: string; is_featured?: boolean; summary?: string;
+  salary_display?: string; salary_min?: number; salary_max?: number; practice_setting?: string;
 }
 
-interface PracticeSetting {
-  value: string;
-  label: string;
-}
-
-const JOB_TYPE_BADGE: Record<string, string> = {
-  fellowship: "bg-[#EDE9FE] text-[#7C3AED]",
-};
+interface PracticeSetting { value: string; label: string; }
 
 function formatSalary(amount: number): string {
   if (amount >= 1000) return `${Math.round(amount / 1000)}K`;
@@ -73,9 +37,8 @@ function formatSalary(amount: number): string {
 
 function getSalaryLine(job: Job): string | null {
   if (job.salary_display) return job.salary_display;
-  if (job.salary_min != null && job.salary_max != null) {
+  if (job.salary_min != null && job.salary_max != null)
     return `$${formatSalary(job.salary_min)} – $${formatSalary(job.salary_max)}/yr`;
-  }
   if (job.salary_min != null) return `From $${formatSalary(job.salary_min)}/yr`;
   if (job.salary_max != null) return `Up to $${formatSalary(job.salary_max)}/yr`;
   return null;
@@ -93,20 +56,18 @@ function timeAgo(dateStr: string) {
 
 function JobCardSkeleton() {
   return (
-    <div className="animate-pulse rounded-2xl border border-border bg-card p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="animate-pulse rounded-2xl border border-slate-100 bg-white p-5">
+      <div className="flex gap-4">
+        <div className="h-12 w-12 rounded-xl bg-slate-100 shrink-0" />
         <div className="flex-1 space-y-3">
-          <div className="h-5 w-24 rounded-full bg-secondary" />
-          <div className="h-6 w-64 rounded bg-secondary" />
-          <div className="flex gap-4">
-            <div className="h-4 w-36 rounded bg-secondary" />
-            <div className="h-4 w-28 rounded bg-secondary" />
-            <div className="h-4 w-20 rounded bg-secondary" />
+          <div className="h-4 w-32 rounded-full bg-slate-100" />
+          <div className="h-5 w-56 rounded bg-slate-100" />
+          <div className="flex gap-3">
+            <div className="h-3 w-28 rounded bg-slate-100" />
+            <div className="h-3 w-20 rounded bg-slate-100" />
           </div>
         </div>
-        <div className="flex flex-col gap-2 sm:items-end">
-          <div className="h-10 w-32 rounded-lg bg-secondary" />
-        </div>
+        <div className="h-8 w-24 rounded-lg bg-slate-100 shrink-0" />
       </div>
     </div>
   );
@@ -114,41 +75,44 @@ function JobCardSkeleton() {
 
 function JobCard({ job, view }: { job: Job; view: "list" | "grid" }) {
   const salaryLine = getSalaryLine(job);
-  const jobTypeLower = (job.job_type ?? "").toLowerCase();
-  const fellowshipBadge = JOB_TYPE_BADGE[jobTypeLower] ?? "";
+  const initials = job.employer_name.split(" ").map((w) => w[0]).slice(0, 2).join("");
 
   if (view === "grid") {
     return (
-      <article className="group flex flex-col rounded-2xl border border-border bg-card p-5 shadow-sm transition hover:border-accent/50 hover:shadow-md">
+      <article className="group flex flex-col rounded-2xl border border-slate-100 bg-white p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#1a6fd4]/20 hover:shadow-lg">
         {job.is_featured && (
-          <span className="mb-2 inline-flex w-fit items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent">
+          <span className="mb-3 inline-flex w-fit items-center gap-1 rounded-full bg-amber-50 border border-amber-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600">
             <BadgeCheck className="h-3 w-3" /> Featured
           </span>
         )}
-        <span className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-primary/8 px-2.5 py-1 text-xs font-semibold text-primary">
-          <Stethoscope className="h-3 w-3" /> {job.specialty_display || job.specialty}
-        </span>
-        <h3 className="mt-3 text-sm font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2">{job.title}</h3>
-        <div className="mt-2 space-y-1.5 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 flex-none" /> {job.employer_name}</span>
-          <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 flex-none" /> {job.location_display}</span>
-          <span className={`flex items-center gap-1.5 ${fellowshipBadge ? "w-fit rounded px-1.5 py-0.5 text-[10px] font-bold " + fellowshipBadge : ""}`}>
-            {!fellowshipBadge && <Briefcase className="h-3.5 w-3.5 flex-none" />}
-            {job.job_type_display || job.job_type}
-          </span>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0f1f3d] text-xs font-extrabold text-white shadow-sm">
+            {initials || "?"}
+          </div>
+          <div className="min-w-0 flex-1">
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#1a6fd4]/8 px-2 py-0.5 text-[11px] font-semibold text-[#1a6fd4]">
+              <Stethoscope className="h-3 w-3" /> {job.specialty_display || job.specialty}
+            </span>
+            <h3 className="mt-1.5 text-sm font-bold text-[#0f1f3d] group-hover:text-[#1a6fd4] transition-colors line-clamp-2">{job.title}</h3>
+          </div>
+        </div>
+        <div className="mt-3 space-y-1.5 text-xs text-slate-400">
+          <span className="flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-slate-300" /> {job.employer_name}</span>
+          <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-slate-300" /> {job.location_display}</span>
+          <span className="flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5 text-slate-300" /> {job.job_type_display || job.job_type}</span>
           {salaryLine && (
-            <span className="flex items-center gap-1.5 font-semibold text-foreground">
-              <DollarSign className="h-3.5 w-3.5 flex-none text-accent" /> {salaryLine}
+            <span className="flex items-center gap-1.5 font-semibold text-emerald-600">
+              <DollarSign className="h-3.5 w-3.5" /> {salaryLine}
             </span>
           )}
         </div>
-        {job.summary && <p className="mt-2 text-xs text-muted-foreground line-clamp-2">{job.summary}</p>}
-        <div className="mt-auto flex items-center justify-between border-t border-border pt-4">
-          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        {job.summary && <p className="mt-2 text-xs text-slate-400 line-clamp-2">{job.summary}</p>}
+        <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-4">
+          <span className="flex items-center gap-1 text-[11px] text-slate-300">
             <Clock className="h-3 w-3" /> {timeAgo(job.created_at)}
           </span>
           <Link to="/jobs/$jobId" params={{ jobId: String(job.id) }}
-            className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary-glow transition">
+            className="inline-flex items-center gap-1 rounded-lg bg-[#1a6fd4] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#1560be]">
             View <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
@@ -157,53 +121,51 @@ function JobCard({ job, view }: { job: Job; view: "list" | "grid" }) {
   }
 
   return (
-    <article className="group rounded-xl border border-border bg-card px-4 py-3.5 shadow-sm transition hover:border-accent/40 hover:shadow-md">
-      <div className="flex items-center justify-between gap-4">
+    <article className="group rounded-2xl border border-slate-100 bg-white px-5 py-4 transition-all duration-200 hover:border-[#1a6fd4]/20 hover:shadow-md">
+      <div className="flex items-center gap-4">
+        {/* Employer initials */}
+        <div className="hidden sm:flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#0f1f3d] text-sm font-extrabold text-white shadow-sm">
+          {initials || "?"}
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-md bg-primary/8 px-2 py-0.5 text-[11px] font-semibold text-primary">
+            <span className="inline-flex items-center gap-1 rounded-md bg-[#1a6fd4]/8 px-2 py-0.5 text-[11px] font-semibold text-[#1a6fd4]">
               <Stethoscope className="h-3 w-3" /> {job.specialty_display || job.specialty}
             </span>
             {job.is_featured && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent">
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600">
                 <BadgeCheck className="h-3 w-3" /> Featured
               </span>
             )}
-            {fellowshipBadge ? (
-              <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold ${fellowshipBadge}`}>
-                {job.job_type_display || job.job_type}
-              </span>
-            ) : null}
-            <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground sm:hidden">
-              <Clock className="h-3 w-3" /> {timeAgo(job.created_at)}
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+              {job.job_type_display || job.job_type}
+            </span>
+            <span className="ml-auto text-[11px] text-slate-300 sm:hidden">
+              {timeAgo(job.created_at)}
             </span>
           </div>
-          <h3 className="mt-1.5 text-sm font-bold text-foreground group-hover:text-primary transition-colors">{job.title}</h3>
-          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><Building2 className="h-3.5 w-3.5 flex-none" /> {job.employer_name}</span>
-            <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5 flex-none" /> {job.location_display}</span>
-            {!fellowshipBadge && (
-              <span className="flex items-center gap-1"><Briefcase className="h-3.5 w-3.5 flex-none" /> {job.job_type_display || job.job_type}</span>
-            )}
+          <h3 className="mt-1.5 text-sm font-bold text-[#0f1f3d] group-hover:text-[#1a6fd4] transition-colors">{job.title}</h3>
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+            <span className="flex items-center gap-1"><Building2 className="h-3.5 w-3.5 text-slate-300" /> {job.employer_name}</span>
+            <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-slate-300" /> {job.location_display}</span>
             {salaryLine && (
-              <span className="flex items-center gap-1 font-semibold text-foreground">
-                <DollarSign className="h-3.5 w-3.5 flex-none text-accent" /> {salaryLine}
+              <span className="flex items-center gap-1 font-semibold text-emerald-600">
+                <DollarSign className="h-3.5 w-3.5" /> {salaryLine}
               </span>
             )}
           </div>
         </div>
-        <div className="hidden shrink-0 flex-col items-end gap-1.5 sm:flex">
-          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        <div className="hidden shrink-0 flex-col items-end gap-2 sm:flex">
+          <span className="flex items-center gap-1 text-[11px] text-slate-300">
             <Clock className="h-3 w-3" /> {timeAgo(job.created_at)}
           </span>
           <Link to="/jobs/$jobId" params={{ jobId: String(job.id) }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary-glow transition">
-            View <ArrowRight className="h-3.5 w-3.5" />
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#1a6fd4] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#1560be]">
+            View position <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-        {/* Mobile CTA */}
         <Link to="/jobs/$jobId" params={{ jobId: String(job.id) }}
-          className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary-glow transition sm:hidden">
+          className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-[#1a6fd4] px-3 py-2 text-xs font-semibold text-white sm:hidden">
           View <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
@@ -221,37 +183,32 @@ function JobsPage() {
   const [salaryMax, setSalaryMax] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 80);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const debouncedQ = useDebounce(q, 400);
   const debouncedSalaryMin = useDebounce(salaryMin, 600);
   const debouncedSalaryMax = useDebounce(salaryMax, 600);
 
   const { data: practiceSettings } = useQuery<PracticeSetting[]>({
     queryKey: ["practice-settings"],
-    queryFn: async () => {
-      const r = await api.get("/api/jobs/practice-settings/");
-      const d = r.data?.data ?? r.data;
-      return Array.isArray(d) ? d : [];
-    },
+    queryFn: async () => { const r = await api.get("/api/jobs/practice-settings/"); const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : []; },
     staleTime: 60 * 60 * 1000,
   });
 
   const { data: apiSpecialties } = useQuery<{ value: string; label: string }[]>({
     queryKey: ["job-specialties"],
-    queryFn: async () => {
-      const r = await api.get("/api/jobs/specialties/");
-      const d = r.data?.data ?? r.data;
-      return Array.isArray(d) ? d : [];
-    },
+    queryFn: async () => { const r = await api.get("/api/jobs/specialties/"); const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : []; },
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: apiProvinces } = useQuery<{ value: string; label: string }[]>({
     queryKey: ["job-provinces"],
-    queryFn: async () => {
-      const r = await api.get("/api/jobs/provinces/");
-      const d = r.data?.data ?? r.data;
-      return Array.isArray(d) ? d : [];
-    },
+    queryFn: async () => { const r = await api.get("/api/jobs/provinces/"); const d = r.data?.data ?? r.data; return Array.isArray(d) ? d : []; },
     staleTime: 5 * 60 * 1000,
   });
 
@@ -286,74 +243,48 @@ function JobsPage() {
   }
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    jobType: false,
-    specialty: false,
-    province: false,
-    practiceSetting: false,
-    salary: false,
+    jobType: false, specialty: false, province: false, practiceSetting: false, salary: false,
   });
 
   function toggleSection(key: string) {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
-  function FilterDropdown({
-    id, label, value, placeholder, options, onChange,
-  }: {
-    id: string;
-    label: string;
-    value: string;
-    placeholder: string;
-    options: { value: string; label: string }[];
-    onChange: (v: string) => void;
+  function FilterDropdown({ id, label, value, placeholder, options, onChange }: {
+    id: string; label: string; value: string; placeholder: string;
+    options: { value: string; label: string }[]; onChange: (v: string) => void;
   }) {
     const isOpen = openSections[id];
     const selected = options.find((o) => o.value === value);
-
-    function select(val: string) {
-      onChange(val);
-      setOpenSections((prev) => ({ ...prev, [id]: false }));
-    }
-
+    function select(val: string) { onChange(val); setOpenSections((prev) => ({ ...prev, [id]: false })); }
     return (
-      <div className="border-b border-border last:border-0">
-        <button
-          type="button"
-          onClick={() => toggleSection(id)}
-          className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-foreground hover:bg-secondary/40 transition"
-        >
+      <div className="px-4 py-1">
+        <button type="button" onClick={() => toggleSection(id)}
+          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:bg-[#f0f4ff] transition">
           <span className="flex items-center gap-2">
             {label}
             {value && (
-              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent">
+              <span className="rounded-full bg-[#1a6fd4] px-2 py-0.5 text-[10px] font-bold text-white normal-case tracking-normal">
                 {selected?.label}
               </span>
             )}
           </span>
-          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+          <ChevronDown className={`h-3.5 w-3.5 text-slate-300 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
         </button>
-
         {isOpen && (
-          <div className="px-3 pb-3">
-            <div className="rounded-xl border border-border bg-background overflow-hidden">
-              <button
-                onClick={() => select("")}
-                className={`flex w-full items-center justify-between px-3 py-2.5 text-sm transition hover:bg-secondary/40 ${value === "" ? "text-primary font-semibold" : "text-muted-foreground"}`}
-              >
-                {placeholder}
-                {value === "" && <Check className="h-3.5 w-3.5 text-primary" />}
+          <div className="mt-1 mb-2 rounded-xl border border-slate-100 bg-[#f8faff] overflow-hidden">
+            <button onClick={() => select("")}
+              className={`flex w-full items-center justify-between px-3 py-2 text-xs transition hover:bg-white ${value === "" ? "text-[#1a6fd4] font-semibold bg-white" : "text-slate-400"}`}>
+              {placeholder}
+              {value === "" && <Check className="h-3 w-3 text-[#1a6fd4]" />}
+            </button>
+            {options.map((opt) => (
+              <button key={opt.value} onClick={() => select(opt.value)}
+                className={`flex w-full items-center justify-between border-t border-slate-100 px-3 py-2 text-xs transition hover:bg-white ${value === opt.value ? "text-[#1a6fd4] font-semibold bg-white" : "text-slate-500"}`}>
+                {opt.label}
+                {value === opt.value && <Check className="h-3 w-3 text-[#1a6fd4]" />}
               </button>
-              {options.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => select(opt.value)}
-                  className={`flex w-full items-center justify-between border-t border-border px-3 py-2.5 text-sm transition hover:bg-secondary/40 ${value === opt.value ? "text-primary font-semibold bg-primary/5" : "text-muted-foreground"}`}
-                >
-                  {opt.label}
-                  {value === opt.value && <Check className="h-3.5 w-3.5 text-primary" />}
-                </button>
-              ))}
-            </div>
+            ))}
           </div>
         )}
       </div>
@@ -363,57 +294,34 @@ function JobsPage() {
   function SalaryRangeFilter() {
     const isOpen = openSections["salary"];
     const hasValue = !!(salaryMin || salaryMax);
-
     return (
-      <div className="border-b border-border last:border-0">
-        <button
-          type="button"
-          onClick={() => toggleSection("salary")}
-          className="flex w-full items-center justify-between px-4 py-3 text-sm font-semibold text-foreground hover:bg-secondary/40 transition"
-        >
+      <div className="px-4 py-1">
+        <button type="button" onClick={() => toggleSection("salary")}
+          className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:bg-[#f0f4ff] transition">
           <span className="flex items-center gap-2">
             Salary Range
-            {hasValue && (
-              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent">
-                Set
-              </span>
-            )}
+            {hasValue && <span className="rounded-full bg-[#1a6fd4] px-2 py-0.5 text-[10px] font-bold text-white normal-case tracking-normal">Set</span>}
           </span>
-          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+          <ChevronDown className={`h-3.5 w-3.5 text-slate-300 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
         </button>
-
         {isOpen && (
-          <div className="px-4 pb-4 space-y-3">
+          <div className="mt-1 mb-2 rounded-xl border border-slate-100 bg-[#f8faff] p-3 space-y-3">
             <div>
-              <label className="mb-1 block text-xs font-semibold text-muted-foreground">Min (CAD/yr)</label>
-              <input
-                type="number"
-                min={0}
-                step={10000}
-                placeholder="e.g. 200000"
-                value={salaryMin}
+              <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Min (CAD/yr)</label>
+              <input type="number" min={0} step={10000} placeholder="e.g. 200000" value={salaryMin}
                 onChange={(e) => setSalaryMin(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
-              />
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-[#0f1f3d] placeholder-slate-300 outline-none transition focus:border-[#1a6fd4] focus:ring-2 focus:ring-[#1a6fd4]/10" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold text-muted-foreground">Max (CAD/yr)</label>
-              <input
-                type="number"
-                min={0}
-                step={10000}
-                placeholder="e.g. 500000"
-                value={salaryMax}
+              <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">Max (CAD/yr)</label>
+              <input type="number" min={0} step={10000} placeholder="e.g. 500000" value={salaryMax}
                 onChange={(e) => setSalaryMax(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder-muted-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
-              />
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-[#0f1f3d] placeholder-slate-300 outline-none transition focus:border-[#1a6fd4] focus:ring-2 focus:ring-[#1a6fd4]/10" />
             </div>
             {hasValue && (
-              <button
-                onClick={() => { setSalaryMin(""); setSalaryMax(""); }}
-                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive transition"
-              >
-                Clear salary filter
+              <button onClick={() => { setSalaryMin(""); setSalaryMax(""); }}
+                className="text-[10px] text-slate-400 hover:text-red-500 transition">
+                ✕ Clear salary filter
               </button>
             )}
           </div>
@@ -423,89 +331,71 @@ function JobsPage() {
   }
 
   const FilterPanel = () => (
-    <div>
-      <FilterDropdown
-        id="jobType"
-        label="Employment Type"
-        value={jobType}
-        placeholder="Any type"
-        options={JOB_TYPES}
-        onChange={setJobType}
-      />
-      <FilterDropdown
-        id="specialty"
-        label="Specialty"
-        value={specialty}
-        placeholder="All specialties"
-        options={SPECIALTY_OPTIONS}
-        onChange={setSpecialty}
-      />
-      <FilterDropdown
-        id="province"
-        label="Province"
-        value={province}
-        placeholder="All provinces"
-        options={PROVINCES}
-        onChange={setProvince}
-      />
-      <FilterDropdown
-        id="practiceSetting"
-        label="Practice Setting"
-        value={practiceSetting}
-        placeholder="Any setting"
-        options={practiceSettings ?? []}
-        onChange={setPracticeSetting}
-      />
+    <div className="py-2">
+      <FilterDropdown id="jobType" label="Employment Type" value={jobType} placeholder="Any type" options={JOB_TYPES} onChange={setJobType} />
+      <FilterDropdown id="specialty" label="Specialty" value={specialty} placeholder="All specialties" options={SPECIALTY_OPTIONS} onChange={setSpecialty} />
+      <FilterDropdown id="province" label="Province" value={province} placeholder="All provinces" options={PROVINCES} onChange={setProvince} />
+      <FilterDropdown id="practiceSetting" label="Practice Setting" value={practiceSetting} placeholder="Any setting" options={practiceSettings ?? []} onChange={setPracticeSetting} />
       <SalaryRangeFilter />
       {activeFilterCount > 0 && (
-        <div className="px-4 py-3">
+        <div className="px-4 pt-2 pb-3">
           <button onClick={clearAll}
-            className="w-full rounded-xl border border-border py-2 text-xs font-semibold text-muted-foreground transition hover:border-destructive/40 hover:text-destructive">
-            Clear all filters
+            className="w-full rounded-xl border border-red-100 bg-red-50 py-2 text-xs font-semibold text-red-400 transition hover:bg-red-100 hover:text-red-600">
+            ✕ Clear all filters
           </button>
         </div>
       )}
     </div>
   );
 
-  return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+  /* Navbar height is 72px, so sticky top = 72px */
+  const HEADER_H = 72;
 
-      {/* ── PAGE HEADER ── */}
-      <div className="flex-none border-b border-border bg-linear-to-r from-primary to-primary-glow px-4 py-4 sm:px-6 sm:py-5 lg:px-14">
-        <div className="text-center">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">CandianMdJobs</p>
-          <h1 className="mt-0.5 text-2xl font-extrabold text-white">Physician Job Board</h1>
-          <p className="mt-1 text-sm text-white/60">Browse verified opportunities across every province and specialty.</p>
+  return (
+    <div className="flex flex-col min-h-screen">
+
+      {/* ── PAGE HERO (full, non-sticky) ── */}
+      <div className="bg-[#0f1f3d] px-4 py-10 sm:px-6 lg:px-14">
+        <div className="mx-auto max-w-7xl">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#1a6fd4]">CandianMdJobs</p>
+          <h1 className="mt-2 text-3xl font-extrabold text-white sm:text-4xl">Physician Job Board</h1>
+          <p className="mt-2 text-sm text-white/50">Browse verified opportunities across every province and specialty.</p>
         </div>
       </div>
 
-      {/* ── BODY: sidebar + job list ── flex-1, both columns independent */}
-      <div className="flex flex-1 overflow-hidden bg-secondary/40 gap-4 px-3 py-3 sm:px-6 sm:py-5 lg:gap-5 lg:px-14 lg:py-6">
-
-        {/* ── LEFT SIDEBAR — always visible, scrolls independently ── */}
-        <aside className="hidden w-72 flex-none overflow-y-auto rounded-xl border border-border bg-card scrollbar-none shadow-sm lg:block">
-
-          {/* Search inside sidebar */}
-          <div className="border-b border-border px-4 py-4">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search jobs…"
-                className="w-full rounded-xl border border-border bg-secondary/50 py-2.5 pl-9 pr-3 text-sm text-foreground placeholder-muted-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
-              />
-            </div>
+      {/* ── STICKY SEARCH BAR ── */}
+      <div
+        className={`sticky z-30 bg-[#0f1f3d] px-4 py-3 sm:px-6 lg:px-14 transition-shadow duration-300 ${
+          scrolled ? "shadow-[0_4px_24px_rgba(0,0,0,0.3)]" : ""
+        }`}
+        style={{ top: HEADER_H }}
+      >
+        <div className="mx-auto max-w-7xl flex gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title, specialty, or employer…"
+              className="w-full rounded-xl border border-white/10 bg-white/8 py-2.5 pl-10 pr-3 text-sm text-white placeholder-white/30 outline-none transition focus:border-[#1a6fd4]/60 focus:bg-white/12" />
           </div>
+          <button className="inline-flex items-center gap-2 rounded-xl bg-[#1a6fd4] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#1560be]">
+            <Search className="h-4 w-4" /> Search
+          </button>
+        </div>
+      </div>
 
-          {/* Filters header */}
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
-              <SlidersHorizontal className="h-4 w-4 text-accent" /> Filters
+      {/* ── BODY ── */}
+      <div className="flex flex-1 bg-[#f8faff] gap-4 px-3 py-4 sm:px-6 lg:gap-5 lg:px-14 lg:py-6 items-start">
+
+        {/* ── LEFT SIDEBAR ── sticky */}
+        <aside
+          className="hidden w-72 flex-none rounded-2xl border border-slate-100 bg-white shadow-sm lg:block sticky overflow-y-auto"
+          style={{ top: HEADER_H + 56, maxHeight: `calc(100vh - ${HEADER_H + 72}px)` }}
+        >
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5">
+            <h2 className="flex items-center gap-2 text-sm font-bold text-[#0f1f3d]">
+              <SlidersHorizontal className="h-4 w-4 text-[#1a6fd4]" /> Filters
             </h2>
             {activeFilterCount > 0 && (
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-primary">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#1a6fd4] text-[10px] font-bold text-white">
                 {activeFilterCount}
               </span>
             )}
@@ -513,31 +403,27 @@ function JobsPage() {
           <FilterPanel />
         </aside>
 
-        {/* ── RIGHT: toolbar + job cards, scrolls independently ── */}
-        <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        {/* ── RIGHT: toolbar + job cards ── */}
+        <div className="flex flex-1 flex-col rounded-2xl border border-slate-100 bg-white shadow-sm">
 
-          {/* Toolbar — fixed inside right column */}
-          <div className="flex-none border-b border-border bg-card px-3 py-2.5 sm:px-5 sm:py-3">
+          {/* Toolbar */}
+          <div className="flex-none border-b border-slate-100 bg-white px-4 py-3 sm:px-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                {/* Mobile filter button */}
+              <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => setMobileFilterOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground transition hover:border-accent/50 lg:hidden">
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-[#1a6fd4]/40 lg:hidden">
                   <SlidersHorizontal className="h-4 w-4" /> Filters
                   {activeFilterCount > 0 && (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-bold text-primary">
-                      {activeFilterCount}
-                    </span>
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#1a6fd4] text-[9px] font-bold text-white">{activeFilterCount}</span>
                   )}
                 </button>
 
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-slate-400">
                   {isLoading
-                    ? <span className="inline-block h-4 w-24 animate-pulse rounded bg-secondary" />
-                    : <><span className="font-bold text-foreground">{jobs.length}</span> opportunities</>}
+                    ? <span className="inline-block h-4 w-24 animate-pulse rounded bg-slate-100" />
+                    : <><span className="font-bold text-[#0f1f3d]">{jobs.length}</span> opportunities found</>}
                 </p>
 
-                {/* Active filter chips */}
                 {[
                   specialty && { label: specialty, clear: () => setSpecialty("") },
                   province && { label: PROVINCES.find((p) => p.value === province)?.label ?? province, clear: () => setProvince("") },
@@ -548,39 +434,38 @@ function JobsPage() {
                   const t = tag as { label: string; clear: () => void };
                   return (
                     <button key={t.label} onClick={t.clear}
-                      className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/8 px-2.5 py-0.5 text-xs font-medium text-accent hover:bg-accent/15 transition">
+                      className="inline-flex items-center gap-1 rounded-full border border-[#1a6fd4]/20 bg-[#1a6fd4]/8 px-2.5 py-0.5 text-xs font-medium text-[#1a6fd4] hover:bg-[#1a6fd4]/15 transition">
                       {t.label} <X className="h-3 w-3" />
                     </button>
                   );
                 })}
               </div>
 
-              {/* View toggle */}
               <div className="flex items-center gap-1.5">
                 <button onClick={() => setView("list")}
-                  className={`rounded-lg border p-2 transition ${view === "list" ? "border-accent bg-accent/10 text-accent" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}>
+                  className={`rounded-lg border p-2 transition ${view === "list" ? "border-[#1a6fd4] bg-[#1a6fd4]/10 text-[#1a6fd4]" : "border-slate-200 text-slate-400 hover:text-slate-600"}`}>
                   <List className="h-4 w-4" />
                 </button>
                 <button onClick={() => setView("grid")}
-                  className={`rounded-lg border p-2 transition ${view === "grid" ? "border-accent bg-accent/10 text-accent" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}>
+                  className={`rounded-lg border p-2 transition ${view === "grid" ? "border-[#1a6fd4] bg-[#1a6fd4]/10 text-[#1a6fd4]" : "border-slate-200 text-slate-400 hover:text-slate-600"}`}>
                   <LayoutGrid className="h-4 w-4" />
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Job cards — only this div scrolls */}
-          <div className="flex-1 overflow-y-auto px-2 py-3 sm:px-4 sm:py-4">
+          {/* Job cards */}
+          <div className="px-3 py-3 sm:px-4 sm:py-4">
             <div className={view === "grid" ? "grid gap-3 sm:grid-cols-2" : "space-y-2.5"}>
               {isLoading && Array.from({ length: 6 }).map((_, i) => <JobCardSkeleton key={i} />)}
               {!isLoading && jobs.map((j) => <JobCard key={j.id} job={j} view={view} />)}
               {!isLoading && jobs.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-border bg-card p-14 text-center">
-                  <Search className="mx-auto h-10 w-10 text-muted-foreground/40" />
-                  <p className="mt-4 font-semibold text-foreground">No jobs match your filters</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Try broadening your search or clearing some filters.</p>
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-14 text-center">
+                  <Search className="mx-auto h-10 w-10 text-slate-200" />
+                  <p className="mt-4 font-semibold text-[#0f1f3d]">No jobs match your filters</p>
+                  <p className="mt-1 text-sm text-slate-400">Try broadening your search or clearing some filters.</p>
                   <button onClick={clearAll}
-                    className="mt-4 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-glow transition">
+                    className="mt-4 rounded-lg bg-[#1a6fd4] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#1560be]">
                     Clear filters
                   </button>
                 </div>
@@ -593,31 +478,25 @@ function JobsPage() {
       {/* ── MOBILE FILTER DRAWER ── */}
       {mobileFilterOpen && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setMobileFilterOpen(false)} />
-          <div className="fixed inset-y-0 left-0 z-50 flex w-80 flex-col bg-card shadow-2xl lg:hidden">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <h2 className="font-bold text-foreground">Filters</h2>
-              <button onClick={() => setMobileFilterOpen(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary">
+          <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden" onClick={() => setMobileFilterOpen(false)} />
+          <div className="fixed inset-y-0 left-0 z-50 flex w-80 flex-col bg-white shadow-2xl lg:hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h2 className="font-bold text-[#0f1f3d]">Filters</h2>
+              <button onClick={() => setMobileFilterOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="border-b border-border px-4 py-3">
+            <div className="border-b border-slate-100 px-4 py-3">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search jobs…"
-                  className="w-full rounded-xl border border-border bg-secondary/50 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15"
-                />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search jobs…"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-[#1a6fd4] focus:ring-2 focus:ring-[#1a6fd4]/10" />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto">
-              <FilterPanel />
-            </div>
-            <div className="border-t border-border p-4">
+            <div className="flex-1 overflow-y-auto"><FilterPanel /></div>
+            <div className="border-t border-slate-100 p-4">
               <button onClick={() => setMobileFilterOpen(false)}
-                className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground hover:bg-primary-glow transition">
+                className="w-full rounded-xl bg-[#1a6fd4] py-3 text-sm font-bold text-white transition hover:bg-[#1560be]">
                 Show {jobs.length} results
               </button>
             </div>
