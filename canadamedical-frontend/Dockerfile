@@ -42,13 +42,13 @@ RUN bun run build
 # After build, copy the prerendered shell (/_shell/index.html) to index.html
 # TanStack Start SPA mode prerenders the app shell during `vite build`.
 # If prerender produced /_shell/index.html, promote it to the root.
-RUN if [ -f dist/client/_shell/index.html ]; then \
-        cp dist/client/_shell/index.html dist/client/index.html; \
-        echo "Copied _shell/index.html to index.html"; \
-    elif [ ! -f dist/client/index.html ]; then \
-        echo "ERROR: No index.html found in dist/client/" && ls dist/client/ && exit 1; \
+RUN if [ -f dist/client/_shell.html ]; then \
+        cp dist/client/_shell.html dist/client/index.html; \
+        echo "Copied _shell.html to index.html"; \
+    elif [ -f dist/client/index.html ]; then \
+        echo "index.html already exists"; \
     else \
-        echo "index.html already exists at dist/client/index.html"; \
+        echo "ERROR: No shell HTML found" && ls dist/client/ && exit 1; \
     fi
 
 
