@@ -90,10 +90,8 @@ if REDIS_URL:
             'LOCATION': REDIS_URL,
             'KEY_PREFIX': 'canadamed',
             'OPTIONS': {
-                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-                'SOCKET_CONNECT_TIMEOUT': 5,
-                'SOCKET_TIMEOUT': 5,
-                'IGNORE_EXCEPTIONS': True,  # cache miss gracefully degrades, never crashes
+                'socket_connect_timeout': 5,
+                'socket_timeout': 5,
             },
         }
     }
