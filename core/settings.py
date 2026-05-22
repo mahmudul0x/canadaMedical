@@ -9,7 +9,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me-in-production-use-a-long-random-string')
 if not DEBUG and SECRET_KEY.startswith('django-insecure'):
     raise ValueError('SECRET_KEY must be set to a secure value in production.')
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
+ALLOWED_HOSTS = list(set(config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())) | {'localhost', '127.0.0.1'})
 
 INSTALLED_APPS = [
     'daphne',
