@@ -19,7 +19,7 @@ django-redis==5.4.0
 
 # ── Celery / Task Queue ───────────────────────────────────────────────────────
 celery==5.4.0
-django-celery-beat==2.6.0
+django-celery-beat==2.7.0
 django_celery_results==2.5.1
 
 # ── Auth / JWT ────────────────────────────────────────────────────────────────
