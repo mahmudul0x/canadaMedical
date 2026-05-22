@@ -26,7 +26,7 @@ api.interceptors.request.use((config) => {
 
   // Propagate a per-request trace ID for server-side log correlation
   config.headers["X-Request-ID"] =
-    typeof crypto !== "undefined"
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : Math.random().toString(36).slice(2);
 
