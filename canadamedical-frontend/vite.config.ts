@@ -10,7 +10,6 @@ export default defineConfig({
   // Disable Cloudflare Workers build — we deploy to a VPS with nginx, not Cloudflare.
   cloudflare: false,
   tanstackStart: {
-    // SPA mode: prerender the app shell to /index.html for nginx static serving.
-    spa: { enabled: true, prerender: { outputPath: "/" } },
+    spa: { enabled: true },
   },
 });

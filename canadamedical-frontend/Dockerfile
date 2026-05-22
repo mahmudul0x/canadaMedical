@@ -1,10 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1 — Dependencies: install node_modules with Bun
-# Use node:20-alpine as base (minimal CVE surface), install Bun on top.
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS deps
 
-# Install Bun via official install script (pinned version for reproducibility)
 RUN apk add --no-cache curl bash \
     && curl -fsSL https://bun.sh/install | bash -s "bun-v1.2.18" \
     && mv /root/.bun/bin/bun /usr/local/bin/bun \
@@ -12,15 +10,13 @@ RUN apk add --no-cache curl bash \
 
 WORKDIR /app
 
-# Copy only manifests first — layer cache reuse on subsequent builds
 COPY package.json bun.lock* bun.lockb* ./
 
 RUN bun install
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Stage 2 — Builder: Vite production bundle
-# VITE_API_URL injected as build arg by CI — never hardcoded here.
+# Stage 2 — Builder: Vite production bundle + SPA shell prerender
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
@@ -43,10 +39,21 @@ COPY . .
 
 RUN bun run build
 
+# After build, copy the prerendered shell (/_shell/index.html) to index.html
+# TanStack Start SPA mode prerenders the app shell during `vite build`.
+# If prerender produced /_shell/index.html, promote it to the root.
+RUN if [ -f dist/client/_shell/index.html ]; then \
+        cp dist/client/_shell/index.html dist/client/index.html; \
+        echo "Copied _shell/index.html to index.html"; \
+    elif [ ! -f dist/client/index.html ]; then \
+        echo "ERROR: No index.html found in dist/client/" && ls dist/client/ && exit 1; \
+    else \
+        echo "index.html already exists at dist/client/index.html"; \
+    fi
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Stage 3 — Runtime: nginx:1.27-alpine (minimal, well-patched)
-# Zero Node / Bun in the final image — pure static serving.
+# Stage 3 — Runtime: nginx:1.27-alpine
 # ─────────────────────────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine AS runtime
 
