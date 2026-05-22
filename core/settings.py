@@ -248,11 +248,17 @@ if DEBUG:
         _frontend_url,
     })
 else:
-    # Production: only exact origins — no localhost wildcards
+    _extra_origin = config('CORS_EXTRA_ORIGIN', default='')
     CORS_ALLOWED_ORIGINS = list({
         _frontend_url,
-        config('CORS_EXTRA_ORIGIN', default=''),
+        _extra_origin,
     } - {''})
+    # Also allow www subdomain of the frontend URL automatically
+    import re as _re
+    _domain = _re.sub(r'^https?://(www\.)?', '', _frontend_url).rstrip('/')
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        rf'^https?://(www\.)?{_re.escape(_domain)}$',
+    ]
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_EXPOSE_HEADERS = ['Content-Disposition', 'X-Request-ID']
