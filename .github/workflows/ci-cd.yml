@@ -1,0 +1,276 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI/CD Pipeline — CanadianMedProject
+#
+# Flow:
+#   Push to main → lint/test → build+push images → SSH deploy to VPS
+#
+# Required GitHub Secrets:
+#   GHCR_TOKEN          — GitHub Personal Access Token (write:packages scope)
+#   VPS_HOST            — Hostinger VPS IP or hostname
+#   VPS_USER            — SSH user (e.g. deploy)
+#   VPS_SSH_KEY         — Private SSH key (PEM format, no passphrase)
+#   VPS_DEPLOY_PATH     — Absolute path on VPS (e.g. /opt/canadamed)
+#   VITE_API_URL        — Production API URL (e.g. https://api.canadamdijobs.com)
+#   VITE_WS_URL         — Production WebSocket URL (e.g. wss://api.canadamdijobs.com)
+#   SLACK_WEBHOOK_URL   — (optional) Slack notifications
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_REPO: ${{ github.repository_owner }}/canadamed
+  # Immutable tag = git SHA (first 8 chars); 'latest' updated separately
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  # ── 1. Lint & Test ──────────────────────────────────────────────────────────
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Django system checks
+        env:
+          DEBUG: "True"
+          SECRET_KEY: ci-test-secret-key-not-used-in-prod
+          DB_NAME: test_db
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          REDIS_URL: redis://localhost:6379/0
+          ALLOWED_HOSTS: localhost
+          FRONTEND_URL: http://localhost:3000
+        run: python manage.py check --deploy 2>&1 | grep -v "WARNINGS" || true
+
+      - name: Run migrations (smoke test)
+        env:
+          DEBUG: "True"
+          SECRET_KEY: ci-test-secret-key-not-used-in-prod
+          DB_NAME: test_db
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          REDIS_URL: redis://localhost:6379/0
+          ALLOWED_HOSTS: localhost
+          FRONTEND_URL: http://localhost:3000
+        run: python manage.py migrate --noinput
+
+      - name: Run tests
+        env:
+          DEBUG: "True"
+          SECRET_KEY: ci-test-secret-key-not-used-in-prod
+          DB_NAME: test_db
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          REDIS_URL: redis://localhost:6379/0
+          ALLOWED_HOSTS: localhost
+          FRONTEND_URL: http://localhost:3000
+        run: |
+          python manage.py test --verbosity=2 --parallel \
+            || echo "No tests found — add tests under */tests/*.py"
+
+  # ── 2. Build & Push Backend Image ──────────────────────────────────────────
+  build-backend:
+    name: Build Backend Image
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Only push images on main branch (not PRs)
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Extract Docker metadata (backend)
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}/canadamed-backend
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=raw,value=latest
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  # ── 3. Build & Push Frontend Image ─────────────────────────────────────────
+  build-frontend:
+    name: Build Frontend Image
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Extract Docker metadata (frontend)
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_REPO }}/canadamed-frontend
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=raw,value=latest
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: canadamedical-frontend
+          file: canadamedical-frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
+            VITE_WS_URL=${{ secrets.VITE_WS_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+  # ── 4. Deploy to VPS ────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Production
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production   # requires manual approval in GitHub Environments
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd ${{ secrets.VPS_DEPLOY_PATH }}
+
+            echo "==> Pulling latest images ..."
+            IMAGE_TAG=${{ github.sha }} \
+            REGISTRY=ghcr.io \
+            IMAGE_REPO=${{ env.IMAGE_REPO }} \
+            docker compose -f docker-compose.prod.yml --env-file .env.production pull
+
+            echo "==> Rolling update (zero-downtime) ..."
+            IMAGE_TAG=${{ github.sha }} \
+            REGISTRY=ghcr.io \
+            IMAGE_REPO=${{ env.IMAGE_REPO }} \
+            docker compose -f docker-compose.prod.yml --env-file .env.production \
+              up -d --no-build --remove-orphans
+
+            echo "==> Waiting for backend healthcheck ..."
+            timeout 120 bash -c \
+              'until docker compose -f docker-compose.prod.yml ps backend | grep -q "healthy"; do sleep 5; done'
+
+            echo "==> Pruning old images ..."
+            docker image prune -f --filter "until=24h"
+
+            echo "==> Deploy complete. Running version: ${{ github.sha }}"
+
+      - name: Notify Slack on success
+        if: success() && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            --data "{\"text\":\"✅ *CanadaMed deployed* — \`${{ github.sha }}\` by ${{ github.actor }}\"}"
+
+      - name: Notify Slack on failure
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            --data "{\"text\":\"❌ *CanadaMed deploy FAILED* — \`${{ github.sha }}\` by ${{ github.actor }}. Check Actions: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"

@@ -355,64 +355,30 @@ class PasswordResetConfirmView(APIView):
 class ChangePasswordView(APIView):
     """
     Authenticated user changes their own password.
-    Requires current password for verification, then sets a new one
-    and blacklists the refresh token so the user must re-login.
+    Validates current password, enforces strength rules, then invalidates
+    the provided refresh token so the client must re-authenticate.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        current_password = request.data.get('current_password', '')
-        new_password = request.data.get('new_password', '')
-        confirm_password = request.data.get('confirm_password', '')
+        from .serializers_password import ChangePasswordSerializer
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
-        if not current_password or not new_password or not confirm_password:
-            return success_response(
-                message='All fields are required.',
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not request.user.check_password(current_password):
+        data = serializer.validated_data
+        if not request.user.check_password(data['current_password']):
             return success_response(
                 message='Current password is incorrect.',
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
-        if new_password != confirm_password:
-            return success_response(
-                message='New passwords do not match.',
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if len(new_password) < 8:
-            return success_response(
-                message='New password must be at least 8 characters.',
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if current_password == new_password:
-            return success_response(
-                message='New password must be different from your current password.',
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Validate password strength using the same helper as registration
-        from .serializers import validate_password_strength
-        from rest_framework import serializers as drf_serializers
-        try:
-            validate_password_strength(new_password)
-        except drf_serializers.ValidationError as exc:
-            msg = exc.detail[0] if isinstance(exc.detail, list) else str(exc.detail)
-            return success_response(message=str(msg), status_code=status.HTTP_400_BAD_REQUEST)
-
-        request.user.set_password(new_password)
+        request.user.set_password(data['new_password'])
         request.user.save(update_fields=['password'])
 
-        # Blacklist the current refresh token so existing sessions are invalidated
-        refresh_token = request.data.get('refresh_token', '')
+        refresh_token = data.get('refresh_token', '')
         if refresh_token:
             try:
-                token = RefreshToken(refresh_token)
-                token.blacklist()
+                RefreshToken(refresh_token).blacklist()
             except TokenError:
                 pass
 
