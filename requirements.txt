@@ -1,62 +1,62 @@
 # ── Core Framework ────────────────────────────────────────────────────────────
-Django==6.0.5
-djangorestframework==3.17.1
-drf-spectacular==0.29.0
-asgiref==3.11.1
+Django==5.2.2
+djangorestframework==3.16.0
+drf-spectacular==0.28.0
+asgiref==3.8.1
 
 # ── ASGI / WebSockets ─────────────────────────────────────────────────────────
 daphne==4.1.2
-channels==4.3.1
-channels-redis==4.3.0
+channels==4.2.2
+channels-redis==4.2.1
 
 # ── Database ──────────────────────────────────────────────────────────────────
-psycopg2-binary==2.9.12
-sqlparse==0.5.5
+psycopg2-binary==2.9.10
+sqlparse==0.5.3
 
 # ── Caching ───────────────────────────────────────────────────────────────────
-redis==7.4.0
+redis==5.2.1
 django-redis==5.4.0
 
 # ── Celery / Task Queue ───────────────────────────────────────────────────────
-celery==5.6.3
-django-celery-beat==2.9.0
-django_celery_results==2.6.0
+celery==5.4.0
+django-celery-beat==2.6.0
+django_celery_results==2.5.1
 
 # ── Auth / JWT ────────────────────────────────────────────────────────────────
-djangorestframework-simplejwt==5.5.1
-PyJWT==2.12.1
-cryptography==48.0.0
+djangorestframework-simplejwt==5.3.1
+PyJWT==2.9.0
+cryptography==43.0.3
 
 # ── API Utilities ─────────────────────────────────────────────────────────────
-django-cors-headers==4.9.0
-django-filter==25.2
+django-cors-headers==4.6.0
+django-filter==24.3
 python-decouple==3.8
-whitenoise==6.12.0
+whitenoise==6.8.2
 
 # ── File Storage / Media ──────────────────────────────────────────────────────
-Pillow==12.2.0
-django-storages==1.14.6
-boto3==1.43.8
+Pillow==11.2.1
+django-storages==1.14.4
+boto3==1.35.99
 
 # ── Payments ──────────────────────────────────────────────────────────────────
-stripe==15.1.0
+stripe==11.4.1
 
 # ── Email ─────────────────────────────────────────────────────────────────────
-resend==2.30.1
-requests==2.34.2
+resend==2.10.0
+requests==2.32.3
 
 # ── PDF Generation ────────────────────────────────────────────────────────────
-reportlab==4.5.1
+reportlab==4.2.5
 
 # ── Monitoring / Error Tracking ───────────────────────────────────────────────
-sentry-sdk==2.21.0
+sentry-sdk==2.19.2
 
 # ── Serialization / Schema ────────────────────────────────────────────────────
-PyYAML==6.0.3
+PyYAML==6.0.2
 inflection==0.5.1
-uritemplate==4.2.0
+uritemplate==4.1.1
 
 # ── AWS SDK ───────────────────────────────────────────────────────────────────
-botocore==1.43.8
-s3transfer==0.17.0
-jmespath==1.1.0
+botocore==1.35.99
+s3transfer==0.10.4
+jmespath==1.0.1
