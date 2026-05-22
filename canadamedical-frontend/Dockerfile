@@ -15,7 +15,7 @@ WORKDIR /app
 # Copy only manifests first — layer cache reuse on subsequent builds
 COPY package.json bun.lock* bun.lockb* ./
 
-RUN bun install --frozen-lockfile
+RUN bun install
 
 
 # ─────────────────────────────────────────────────────────────────────────────
