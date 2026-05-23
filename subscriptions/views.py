@@ -521,6 +521,7 @@ class CancelSubscriptionView(APIView):
         # Stripe confirmed — now update our DB (webhook will also sync this)
         sub.cancel_at_period_end = True
         sub.save(update_fields=['cancel_at_period_end'])
+        send_admin_subscription_cancelled_email_task.delay(request.user.pk, sub.plan.name)
         return success_response(
             message='Subscription will cancel at the end of the current billing period.'
         )
@@ -693,6 +694,12 @@ class SyncSubscriptionView(APIView):
                 'current_period_start': _ts(getattr(stripe_sub, 'current_period_start', None)),
                 'current_period_end': _ts(getattr(stripe_sub, 'current_period_end', None)),
             },
+        )
+        amount_total = getattr(session, 'amount_total', None) or 0
+        send_admin_payment_received_email_task.delay(
+            request.user.pk,
+            plan.name,
+            f"${amount_total / 100:.2f}",
         )
         logger.info('Subscription synced via session %s for user %s', session_id, request.user.email)
         return success_response(message='Subscription synced.')
