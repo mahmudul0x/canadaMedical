@@ -8,7 +8,7 @@ from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.conf import settings
 
-from emails.tasks import send_welcome_email_task, send_password_reset_email_task
+from emails.tasks import send_welcome_email_task, send_password_reset_email_task, send_admin_new_user_email_task
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -57,6 +57,7 @@ class PhysicianRegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         send_welcome_email_task.delay(user.pk)
+        send_admin_new_user_email_task.delay(user.pk)
         refresh = RefreshToken.for_user(user)
         return success_response(
             data={
@@ -89,6 +90,7 @@ class EmployerRegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         send_welcome_email_task.delay(user.pk)
+        send_admin_new_user_email_task.delay(user.pk)
         refresh = RefreshToken.for_user(user)
         return success_response(
             data={

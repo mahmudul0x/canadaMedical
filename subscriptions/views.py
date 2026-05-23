@@ -13,7 +13,12 @@ from rest_framework.views import APIView
 from core.exceptions import success_response
 from core.permissions import IsEmployer, IsAdminUser
 from .models import SubscriptionPlan, UserSubscription, PaymentHistory, EnterpriseRequest, CustomSubscriptionPlan
-from emails.tasks import send_payment_confirmation_email_task
+from emails.tasks import (
+    send_payment_confirmation_email_task,
+    send_admin_payment_received_email_task,
+    send_admin_payment_failed_email_task,
+    send_admin_subscription_cancelled_email_task,
+)
 from .serializers import (
     SubscriptionPlanSerializer, UserSubscriptionSerializer, PaymentHistorySerializer,
     EnterpriseRequestSerializer, EnterpriseRequestAdminSerializer, CustomSubscriptionPlanSerializer,
@@ -120,6 +125,11 @@ class StripeWebhookView(APIView):
             elif event_type == 'invoice.payment_failed':
                 sub_id = getattr(data, 'subscription', '') or ''
                 UserSubscription.objects.filter(stripe_subscription_id=sub_id).update(status='past_due')
+                try:
+                    user_sub = UserSubscription.objects.select_related('user', 'plan').get(stripe_subscription_id=sub_id)
+                    send_admin_payment_failed_email_task.delay(user_sub.user.pk, user_sub.plan.name)
+                except UserSubscription.DoesNotExist:
+                    pass
         except stripe.StripeError as e:
             logger.exception('Stripe error in webhook handler for event %s', event_type)
             return HttpResponse(status=500)
@@ -247,6 +257,11 @@ class StripeWebhookView(APIView):
             f"${amount_total / 100:.2f}",
             period_end,
         )
+        send_admin_payment_received_email_task.delay(
+            user.pk,
+            plan.name,
+            f"${amount_total / 100:.2f}",
+        )
 
     def _handle_subscription_updated(self, sub):
         sub_id = getattr(sub, 'id', '') or ''
@@ -318,6 +333,11 @@ class StripeWebhookView(APIView):
             f"${amount_paid / 100:.2f}",
             next_period_end,
         )
+        send_admin_payment_received_email_task.delay(
+            user_sub.user.pk,
+            f"{user_sub.plan.name} — Renewal",
+            f"${amount_paid / 100:.2f}",
+        )
 
     def _cancel_old_subscription(self, user, new_subscription_id: str):
         """Cancel the user's existing Stripe subscription (if any) when they
@@ -352,6 +372,7 @@ class StripeWebhookView(APIView):
 
         qs = UserSubscription.objects.filter(stripe_subscription_id=sub_id).select_related('user', 'plan')
         for user_sub in qs:
+            send_admin_subscription_cancelled_email_task.delay(user_sub.user.pk, user_sub.plan.name)
             # Deactivate custom plan if this was an enterprise subscription
             try:
                 cp = user_sub.user.custom_plan
