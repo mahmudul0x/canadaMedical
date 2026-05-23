@@ -133,8 +133,10 @@ function Hero() {
           alt="Physician"
           className="h-full w-full object-cover object-top-right"
         />
-        {/* Left-side gradient overlay so text is readable */}
-        <div className="absolute inset-0 bg-linear-to-r from-[#1a6fd4]/30 via-[#1a6fd4]/10 via-20% to-transparent" />
+        {/* Mobile: strong overlay so text is readable */}
+        <div className="absolute inset-0 bg-white/75 sm:bg-transparent" />
+        {/* Desktop: left-side gradient */}
+        <div className="absolute inset-0 hidden sm:block bg-linear-to-r from-white/80 via-white/50 via-40% to-transparent" />
         {/* Bottom fade */}
         <div className="absolute inset-x-0 bottom-0 h-6 bg-linear-to-t from-white/40 to-transparent" />
       </div>
